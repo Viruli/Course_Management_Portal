@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "CMP",
+    "slug": "slp-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "backgroundColor": "#152A24",
+      "resizeMode": "contain"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.futurecx.slpmobile"
+    },
+    "android": {
+      "package": "com.futurecx.slpmobile",
+      "edgeToEdgeEnabled": true,
+      "adaptiveIcon": {
+        "backgroundColor": "#152A24"
+      }
+    },
+    "plugins": ["expo-secure-store"]
+  }
+}

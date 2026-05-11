@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>EduPath — Mobile Course Management Portal</title>
+
+<link rel="icon" href="assets/logo-mark.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="src/tokens.css" />
+<link rel="stylesheet" href="src/app.css" />
+
+<!-- Lucide icons -->
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+
+<style>
+  body {
+    margin: 0;
+    background: #f1efea;
+    font-family: var(--font-body);
+    color: var(--color-primary);
+    overflow: hidden;
+  }
+
+  /* Canvas global typography */
+  .h-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--color-body-green);
+    font-size: 11px;
+    font-weight: 500;
+  }
+  .h-meta .dot-sep {
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: var(--color-muted);
+    display: inline-block;
+  }
+  .section-h {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .section-h h3 {
+    margin: 0;
+    font-family: var(--font-heading);
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--color-primary);
+    letter-spacing: -0.01em;
+  }
+  a.link {
+    cursor: pointer;
+    color: var(--color-primary);
+    font-size: 12px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    text-decoration: none;
+  }
+  a.link:hover { color: var(--color-body-green); }
+
+  /* Role app frame — gives Phone an absolute container so sheets/toasts can position */
+  .role-app .phone-wrap {
+    position: relative;
+    width: 380px;
+    height: 820px;
+    display: inline-block;
+  }
+  .role-app .phone {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+  .role-app .sheet,
+  .role-app .toast { position: absolute; }
+
+  /* Canvas section header */
+  .canvas-section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+  .canvas-section .eyebrow {
+    align-self: flex-start;
+  }
+  .canvas-section h2 {
+    margin: 0;
+    font-family: var(--font-heading);
+    font-size: 36px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .canvas-section p {
+    margin: 0;
+    color: var(--color-body-green);
+    font-size: 16px;
+    max-width: 60ch;
+  }
+  .canvas-section .accent-word { color: var(--color-accent); background: var(--color-primary); padding: 0 8px; border-radius: 6px; }
+
+  /* Toolbar */
+  .toolbar {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px;
+    background: var(--color-surface);
+    border-radius: 9999px;
+    box-shadow: 0 12px 32px rgba(21,42,36,0.12), 0 2px 4px rgba(21,42,36,0.06);
+    border: 1px solid var(--color-stroke);
+  }
+  .toolbar__brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px 0 12px;
+  }
+  .toolbar__brand img { height: 22px; }
+  .toolbar__divider {
+    width: 1px;
+    height: 22px;
+    background: var(--color-stroke);
+  }
+  .toolbar__btn {
+    height: 34px;
+    padding: 0 14px;
+    border-radius: 9999px;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--color-body-green);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 150ms ease;
+  }
+  .toolbar__btn:hover { background: var(--color-light-gray); color: var(--color-primary); }
+  .toolbar__btn.is-active {
+    background: var(--color-primary);
+    color: #fff;
+  }
+</style>
+</head>
+
+<body>
+
+<!-- Top toolbar -->
+<div class="toolbar">
+  <div class="toolbar__brand">
+    <img src="assets/logo-default.svg" alt="EduPath" />
+    <span style="font-family: var(--font-heading); font-weight: 700; font-size: 14px; letter-spacing: -0.01em; color: var(--color-primary);">Mobile</span>
+  </div>
+  <div class="toolbar__divider"></div>
+  <button class="toolbar__btn is-active" data-view="canvas">All screens</button>
+  <button class="toolbar__btn" data-view="prototype">Live prototype</button>
+</div>
+
+<!-- React root -->
+<div id="root"></div>
+
+<!-- React + Babel -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<!-- App pieces -->
+<script type="text/babel" src="src/data.jsx"></script>
+<script type="text/babel" src="src/components.jsx"></script>
+<script type="text/babel" src="src/screens-public.jsx"></script>
+<script type="text/babel" src="src/screens-student.jsx"></script>
+<script type="text/babel" src="src/screens-admin.jsx"></script>
+<script type="text/babel" src="src/role-app.jsx"></script>
+<script type="text/babel" src="src/design-canvas.jsx"></script>
+<script type="text/babel" src="src/tweaks-panel.jsx"></script>
+
+<!-- Main -->
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+/* A standalone artboard that mounts a single screen with its own state. */
+function FixedScreen({ role, screen, course, sheet }) {
+  const [c, setC] = useState(course || COURSES[0]);
+  const noop = () => {};
+  const navStub = () => {};
+
+  let body = null;
+  switch (screen) {
+    case 'splash':       body = <ScreenSplash onContinue={noop} />; break;
+    case 'onboarding':   body = <ScreenOnboarding onDone={noop} />; break;
+    case 'signin':       body = <ScreenSignIn onSubmit={noop} onSwitch={noop} onBack={noop} />; break;
+    case 'signup':       body = <ScreenSignUp onSubmit={noop} onSwitch={noop} onBack={noop} />; break;
+    case 'pending':      body = <ScreenPending onSignOut={noop} />; break;
+
+    case 'studentHome':    body = <StudentHome user={STUDENT} onNav={navStub} onContinue={noop} onCourse={noop} />; break;
+    case 'studentBrowse':  body = <StudentBrowse onNav={navStub} onCourse={noop} />; break;
+    case 'studentMine':    body = <StudentMine onNav={navStub} onCourse={noop} />; break;
+    case 'studentProfile': body = <StudentProfile user={STUDENT} onNav={navStub} onSignOut={noop} />; break;
+    case 'courseDetail':   body = <StudentCourseDetail course={c} onBack={noop} onPlay={noop} onEnrol={noop} />; break;
+    case 'lesson':         body = <StudentLessonPlayer onBack={noop} onComplete={noop} />; break;
+    case 'notifications':  body = <ScreenNotifications items={NOTIFS_STUDENT} onBack={noop} onMarkAll={noop} />; break;
+
+    case 'adminDash':      body = <AdminDashboard user={ADMIN_USER} onNav={navStub} onOpen={noop} />; break;
+    case 'adminRegs':      body = <AdminRegistrations onNav={navStub} onOpen={noop} />; break;
+    case 'adminEnrols':    body = <AdminEnrolments onNav={navStub} onOpen={noop} />; break;
+    case 'adminCourses':   body = <AdminCourses onNav={navStub} onCourse={noop} />; break;
+    case 'adminCourseEdit':body = <AdminCourseEditor course={c} onBack={noop} onPublish={noop} />; break;
+    case 'adminAudit':     body = <AdminAudit onNav={navStub} role="Admin" />; break;
+    case 'adminMore':      body = <AdminMore user={ADMIN_USER} onNav={navStub} onSignOut={noop} role="Admin" />; break;
+
+    case 'superDash':      body = <SuperDashboard user={SUPER} onNav={navStub} onOpen={noop} />; break;
+    case 'superAdmins':    body = <SuperAdmins onNav={navStub} onInvite={noop} />; break;
+    case 'superQueue':     body = <SuperQueue onNav={navStub} onOpen={noop} />; break;
+    case 'superMore':      body = <AdminMore user={SUPER} onNav={navStub} onSignOut={noop} role="Super Admin" />; break;
+    case 'superAudit':     body = <AdminAudit onNav={navStub} role="Super Admin" />; break;
+    default: body = <div>Unknown screen: {screen}</div>;
+  }
+
+  return (
+    <div className="role-app" data-role={role}>
+      <div className="phone-wrap">
+        {body}
+        {sheet === 'approve' && (
+          <ApprovalSheet kind="approve" item={REGISTRATIONS[0]} onClose={() => {}} onConfirm={() => {}} />
+        )}
+        {sheet === 'invite' && (
+          <InviteAdminSheet onClose={() => {}} onConfirm={() => {}} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* All-screens canvas — shows every surface organised by role. */
+function ScreensCanvas() {
+  const phoneW = 380, phoneH = 820;
+  const ab = (id, label, screen, role, opts = {}) => (
+    <DCArtboard id={id} label={label} width={phoneW} height={phoneH}>
+      <FixedScreen role={role} screen={screen} {...opts} />
+    </DCArtboard>
+  );
+
+  return (
+    <DesignCanvas
+      title="EduPath — Mobile Course Management Portal"
+      subtitle="Android · all four roles · complete flow"
+      hint="Drag to pan · scroll to zoom · click any screen to focus"
+    >
+      <DCSection id="public" title="Public visitor" subtitle="Marketing → onboarding → auth → pending approval">
+        {ab('p-splash',   '01 · Splash',       'splash',      'public')}
+        {ab('p-onb',      '02 · Onboarding',   'onboarding',  'public')}
+        {ab('p-signin',   '03 · Sign in',      'signin',      'public')}
+        {ab('p-signup',   '04 · Sign up',      'signup',      'public')}
+        {ab('p-pending',  '05 · Pending approval', 'pending', 'public')}
+      </DCSection>
+
+      <DCSection id="student" title="Student" subtitle="Discover · learn · track progress">
+        {ab('s-home',     '01 · Home',           'studentHome',    'student')}
+        {ab('s-browse',   '02 · Browse catalog', 'studentBrowse',  'student')}
+        {ab('s-detail',   '03 · Course detail',  'courseDetail',   'student', { course: COURSES[0] })}
+        {ab('s-lesson',   '04 · Lesson player',  'lesson',         'student')}
+        {ab('s-mine',     '05 · My Learning',    'studentMine',    'student')}
+        {ab('s-notifs',   '06 · Notifications',  'notifications',  'student')}
+        {ab('s-profile',  '07 · Profile',        'studentProfile', 'student')}
+      </DCSection>
+
+      <DCSection id="admin" title="Admin" subtitle="Approve registrations + enrolments · author courses">
+        {ab('a-dash',     '01 · Dashboard',      'adminDash',       'admin')}
+        {ab('a-regs',     '02 · Registrations',  'adminRegs',       'admin')}
+        {ab('a-approve',  '03 · Approve sheet',  'adminRegs',       'admin', { sheet: 'approve' })}
+        {ab('a-enrols',   '04 · Enrolments',     'adminEnrols',     'admin')}
+        {ab('a-courses',  '05 · Courses',        'adminCourses',    'admin')}
+        {ab('a-edit',     '06 · Course editor',  'adminCourseEdit', 'admin', { course: COURSES[2] })}
+        {ab('a-audit',    '07 · Audit log',      'adminAudit',      'admin')}
+        {ab('a-more',     '08 · More menu',      'adminMore',       'admin')}
+      </DCSection>
+
+      <DCSection id="super" title="Super Admin" subtitle="Manage admins · system audit · full oversight">
+        {ab('su-dash',    '01 · Dashboard',      'superDash',    'super')}
+        {ab('su-admins',  '02 · Administrators', 'superAdmins',  'super')}
+        {ab('su-invite',  '03 · Invite admin',   'superAdmins',  'super', { sheet: 'invite' })}
+        {ab('su-queue',   '04 · Approvals queue','superQueue',   'super')}
+        {ab('su-audit',   '05 · System audit',   'superAudit',   'super')}
+        {ab('su-more',    '06 · More menu',      'superMore',    'super')}
+      </DCSection>
+
+      <DCSection id="proto" title="Live prototype" subtitle="Fully clickable — start at any role">
+        <DCArtboard id="proto-public"  label="Public flow"   width={phoneW} height={phoneH}>
+          <RoleApp role="public" />
+        </DCArtboard>
+        <DCArtboard id="proto-student" label="Student flow"  width={phoneW} height={phoneH}>
+          <RoleApp role="student" />
+        </DCArtboard>
+        <DCArtboard id="proto-admin"   label="Admin flow"    width={phoneW} height={phoneH}>
+          <RoleApp role="admin" />
+        </DCArtboard>
+        <DCArtboard id="proto-super"   label="Super Admin flow" width={phoneW} height={phoneH}>
+          <RoleApp role="super" />
+        </DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+
+/* Single-phone live prototype — full viewport */
+function LiveStage() {
+  const [role, setRole] = useState('student');
+  return (
+    <div style={{
+      width: '100vw', height: '100vh',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      gap: 32, background: '#152A24',
+      backgroundImage: 'radial-gradient(circle at 20% 0%, rgba(188,233,85,0.06) 0%, transparent 50%)'
+    }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, color: '#fff', maxWidth: 280 }}>
+        <span className="eyebrow eyebrow--dark" style={{ alignSelf: 'flex-start' }}>Live prototype</span>
+        <h1 style={{ margin: 0, fontFamily: 'var(--font-heading)', fontSize: 32, fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.1 }}>
+          A mobile portal for <span style={{ color: '#BCE955' }}>every role</span>.
+        </h1>
+        <p style={{ margin: 0, color: 'rgba(255,255,255,0.65)', fontSize: 14, lineHeight: 1.55 }}>
+          Tap and scroll the device — every nav target, sheet, and tab is wired. Switch the role on the right to start the journey at a different point in the system.
+        </p>
+        <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {[
+            { id: 'public',  ico: 'globe',         label: 'Public visitor' },
+            { id: 'student', ico: 'graduation-cap',label: 'Student' },
+            { id: 'admin',   ico: 'shield',        label: 'Admin' },
+            { id: 'super',   ico: 'shield-check',  label: 'Super Admin' },
+          ].map(r => (
+            <button key={r.id} onClick={() => setRole(r.id)} style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '10px 14px', borderRadius: 12,
+              background: role === r.id ? 'rgba(188,233,85,0.14)' : 'rgba(255,255,255,0.06)',
+              border: '1px solid ' + (role === r.id ? 'rgba(188,233,85,0.40)' : 'rgba(255,255,255,0.10)'),
+              color: '#fff', cursor: 'pointer',
+              fontFamily: 'var(--font-body)', fontWeight: 600, fontSize: 13,
+              textAlign: 'left'
+            }}>
+              <span style={{ width: 28, height: 28, borderRadius: 8, background: role === r.id ? '#BCE955' : 'rgba(255,255,255,0.06)', color: role === r.id ? '#152A24' : 'rgba(255,255,255,0.7)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Icon name={r.ico} size={14} />
+              </span>
+              {r.label}
+              {role === r.id && <Icon name="check" size={14} style={{ marginLeft: 'auto', color: '#BCE955' }} />}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <RoleApp key={role} role={role} />
+    </div>
+  );
+}
+
+function App() {
+  const [view, setView] = useState('canvas');
+
+  /* wire toolbar */
+  useEffect(() => {
+    const onClick = (e) => {
+      const btn = e.target.closest('.toolbar__btn');
+      if (!btn) return;
+      const v = btn.dataset.view;
+      if (!v) return;
+      document.querySelectorAll('.toolbar__btn').forEach(b => b.classList.toggle('is-active', b.dataset.view === v));
+      setView(v);
+    };
+    document.addEventListener('click', onClick);
+    return () => document.removeEventListener('click', onClick);
+  }, []);
+
+  /* Tweaks panel — exposes lime intensity & view */
+  const [tweaks, setTweak] = useTweaks(/*EDITMODE-BEGIN*/{
+    "limeBoost": "default",
+    "darkBg": false
+  }/*EDITMODE-END*/);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (tweaks.limeBoost === 'brighter') root.style.setProperty('--color-accent', '#C8F167');
+    else if (tweaks.limeBoost === 'deeper') root.style.setProperty('--color-accent', '#A8D43D');
+    else root.style.removeProperty('--color-accent');
+    document.body.style.background = tweaks.darkBg ? '#152A24' : '#f1efea';
+  }, [tweaks.limeBoost, tweaks.darkBg]);
+
+  return (
+    <Fragment>
+      {view === 'canvas'    ? <ScreensCanvas /> : null}
+      {view === 'prototype' ? <LiveStage /> : null}
+
+      {tweaks && (
+        <TweaksPanel title="Tweaks">
+          <TweakSection label="Theme">
+            <TweakRadio
+              label="Lime accent"
+              value={tweaks.limeBoost}
+              onChange={(v) => setTweak('limeBoost', v)}
+              options={[
+                { value: 'default',  label: 'Default' },
+                { value: 'brighter', label: 'Brighter' },
+                { value: 'deeper',   label: 'Deeper' },
+              ]} />
+            <TweakToggle
+              label="Dark canvas bg"
+              value={tweaks.darkBg}
+              onChange={(v) => setTweak('darkBg', v)} />
+          </TweakSection>
+          <TweakSection label="View">
+            <TweakRadio
+              label="Stage"
+              value={view}
+              onChange={(v) => { setView(v); document.querySelectorAll('.toolbar__btn').forEach(b => b.classList.toggle('is-active', b.dataset.view === v)); }}
+              options={[
+                { value: 'canvas',    label: 'Screens' },
+                { value: 'prototype', label: 'Prototype' },
+              ]} />
+          </TweakSection>
+        </TweaksPanel>
+      )}
+    </Fragment>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+
+/* Initial lucide pass after first render */
+setTimeout(() => { if (window.lucide) window.lucide.createIcons({ nameAttr: 'data-lucide' }); }, 50);
+</script>
+
+</body>
+</html>
