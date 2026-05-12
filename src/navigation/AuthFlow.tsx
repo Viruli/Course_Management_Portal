@@ -69,15 +69,21 @@ export function AuthFlow() {
           <SignUpScreen
             onBack={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Splash'))}
             onSwitchToSignIn={() => navigation.navigate('SignIn')}
-            onSubmit={() => navigation.navigate('Pending')}
+            onSubmit={(message) => navigation.navigate('Pending', { message })}
           />
         )}
       </Stack.Screen>
 
       <Stack.Screen name="Pending">
-        {({ navigation }) => (
-          <PendingScreen onSignOut={() => navigation.popToTop()} />
-        )}
+        {({ navigation, route }) => {
+          const message = (route.params as { message?: string } | undefined)?.message;
+          return (
+            <PendingScreen
+              message={message}
+              onSignOut={() => navigation.popToTop()}
+            />
+          );
+        }}
       </Stack.Screen>
     </Stack.Navigator>
   );

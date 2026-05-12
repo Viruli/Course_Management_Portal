@@ -8,12 +8,20 @@ import { IconBtn } from '../../components/IconBtn';
 import { AppBar } from '../../components/AppBar';
 import type { Colors } from '../../theme/colors';
 import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
+import { registerStudent } from '../../services/auth';
+import { ApiError } from '../../services/api';
+import { toast } from '../../store/uiStore';
+import { DebugPanel } from '../../components/DebugPanel';
 
 interface Props {
-  onSubmit: () => void;
+  onSubmit: (message: string) => void;
   onSwitchToSignIn: () => void;
   onBack: () => void;
 }
+
+// Matches the server-side password policy in the API doc:
+// min 10 chars + uppercase + lowercase + number + special character.
+const PASSWORD_RULE = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{10,}$/;
 
 export function SignUpScreen({ onSubmit, onSwitchToSignIn, onBack }: Props) {
   const colors = useColors();
@@ -21,31 +29,62 @@ export function SignUpScreen({ onSubmit, onSwitchToSignIn, onBack }: Props) {
   const [firstName, setFirstName] = useState('Anjali');
   const [lastName, setLastName]   = useState('Silva');
   const [email, setEmail]         = useState('anjali.silva@edupath.lk');
-  const [password, setPassword]   = useState('demo-password');
-  const [confirm, setConfirm]     = useState('demo-password');
+  const [password, setPassword]   = useState('Demo@Pass2026');
+  const [confirm, setConfirm]     = useState('Demo@Pass2026');
   const [agreed, setAgreed]       = useState(true);
   const [touched, setTouched]     = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
 
   const passwordMismatch = useMemo(
     () => password.length > 0 && confirm.length > 0 && password !== confirm,
     [password, confirm],
   );
 
+  const passwordValid = PASSWORD_RULE.test(password);
+
   const canSubmit =
     firstName.trim().length > 0 &&
     lastName.trim().length  > 0 &&
     email.includes('@') &&
-    password.length >= 6 &&
+    passwordValid &&
     confirm === password &&
     agreed;
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     setTouched(true);
-    if (canSubmit) onSubmit();
+    if (!canSubmit || submitting) return;
+
+    setSubmitting(true);
+    setFieldErrors({});
+    try {
+      const result = await registerStudent({
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        email: email.trim(),
+        password,
+      });
+      onSubmit(result.data.message);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.code === 'VALIDATION_ERROR' && err.details) {
+          setFieldErrors(err.details);
+          toast.error('Please fix the highlighted fields.');
+        } else if (err.code === 'EMAIL_EXISTS') {
+          toast.error('This email is already registered.');
+        } else {
+          toast.error(err.message);
+        }
+      } else {
+        toast.error('Something went wrong. Please try again.');
+      }
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
-    <ScreenContainer edges={['top', 'bottom']} contentStyle={{ flex: 1 }}>
+    <ScreenContainer edges={['top', 'bottom']} scroll contentStyle={styles.scrollContent}>
       <AppBar
         transparent
         leading={<IconBtn onPress={onBack}><ArrowLeft size={20} color={colors.primary} /></IconBtn>}
@@ -76,14 +115,20 @@ export function SignUpScreen({ onSubmit, onSwitchToSignIn, onBack }: Props) {
             autoCapitalize="none"
             autoCorrect={false}
           />
+          {fieldErrors.email ? (
+            <View style={styles.errorRow}>
+              <AlertCircle size={13} color={colors.error} />
+              <Text style={styles.errorText}>{fieldErrors.email[0]}</Text>
+            </View>
+          ) : null}
 
           <Input
             label="Password"
             value={password}
             onChangeText={setPassword}
-            placeholder="At least 6 characters"
+            placeholder="At least 10 characters"
             password
-            hint="Use 6+ characters with a number and a symbol."
+            hint="At least 10 characters with uppercase, lowercase, a number and a symbol."
           />
 
           <Input
@@ -101,6 +146,22 @@ export function SignUpScreen({ onSubmit, onSwitchToSignIn, onBack }: Props) {
             </View>
           ) : null}
 
+          {touched && !passwordMismatch && password.length > 0 && !passwordValid ? (
+            <View style={styles.errorRow}>
+              <AlertCircle size={13} color={colors.error} />
+              <Text style={styles.errorText}>
+                Password must be 10+ chars with uppercase, lowercase, a number and a symbol.
+              </Text>
+            </View>
+          ) : null}
+
+          {fieldErrors.password ? (
+            <View style={styles.errorRow}>
+              <AlertCircle size={13} color={colors.error} />
+              <Text style={styles.errorText}>{fieldErrors.password[0]}</Text>
+            </View>
+          ) : null}
+
           <Pressable onPress={() => setAgreed(!agreed)} style={styles.agreeRow}>
             <View style={[styles.checkbox, agreed && styles.checkboxOn]}>
               {agreed ? <Check size={12} color={colors.white} /> : null}
@@ -112,8 +173,13 @@ export function SignUpScreen({ onSubmit, onSwitchToSignIn, onBack }: Props) {
         </View>
 
         <View style={styles.actions}>
-          <Button full size="lg" disabled={touched && !canSubmit} onPress={handleSubmit}>
-            Request account
+          <Button
+            full
+            size="lg"
+            disabled={submitting || (touched && !canSubmit)}
+            onPress={handleSubmit}
+          >
+            {submitting ? 'Submitting…' : 'Request account'}
           </Button>
           <View style={styles.switchRow}>
             <Text style={styles.switchText}>Already have one? </Text>
@@ -121,6 +187,7 @@ export function SignUpScreen({ onSubmit, onSwitchToSignIn, onBack }: Props) {
               <Text style={styles.switchLink}>Sign in</Text>
             </Pressable>
           </View>
+          <DebugPanel tags={['auth.register']} title="Sign up debug" />
         </View>
       </View>
     </ScreenContainer>
@@ -128,6 +195,7 @@ export function SignUpScreen({ onSubmit, onSwitchToSignIn, onBack }: Props) {
 }
 
 const createStyles = (colors: Colors) => StyleSheet.create({
+  scrollContent: { flexGrow: 1 },
   body: { flex: 1, paddingHorizontal: 24, paddingBottom: 24, justifyContent: 'space-between' },
   brand: { fontSize: 22, fontWeight: '800', color: colors.primary, letterSpacing: -0.4 },
   h1: { fontSize: 26, fontWeight: '700', color: colors.primary, marginTop: 22, letterSpacing: -0.6 },
