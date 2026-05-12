@@ -22,34 +22,54 @@ interface Props {
 // Matches the server-side password policy in the API doc:
 // min 10 chars + uppercase + lowercase + number + special character.
 const PASSWORD_RULE = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{10,}$/;
+const EMAIL_RULE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+type FieldName = 'firstName' | 'lastName' | 'email' | 'password' | 'confirm';
 
 export function SignUpScreen({ onSubmit, onSwitchToSignIn, onBack }: Props) {
   const colors = useColors();
   const styles = useThemedStyles(createStyles);
-  const [firstName, setFirstName] = useState('Anjali');
-  const [lastName, setLastName]   = useState('Silva');
-  const [email, setEmail]         = useState('anjali.silva@edupath.lk');
-  const [password, setPassword]   = useState('Demo@Pass2026');
-  const [confirm, setConfirm]     = useState('Demo@Pass2026');
-  const [agreed, setAgreed]       = useState(true);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName]   = useState('');
+  const [email, setEmail]         = useState('');
+  const [password, setPassword]   = useState('');
+  const [confirm, setConfirm]     = useState('');
+  const [agreed, setAgreed]       = useState(false);
   const [touched, setTouched]     = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
+  const [blurred, setBlurred] = useState<Record<FieldName, boolean>>({
+    firstName: false,
+    lastName: false,
+    email: false,
+    password: false,
+    confirm: false,
+  });
 
-  const passwordMismatch = useMemo(
-    () => password.length > 0 && confirm.length > 0 && password !== confirm,
-    [password, confirm],
-  );
+  const markBlurred = (field: FieldName) =>
+    setBlurred((prev) => (prev[field] ? prev : { ...prev, [field]: true }));
 
-  const passwordValid = PASSWORD_RULE.test(password);
+  const validationErrors = useMemo(() => {
+    const errs: Partial<Record<FieldName, string>> = {};
+    if (!firstName.trim()) errs.firstName = 'First name is required.';
+    else if (firstName.trim().length > 100) errs.firstName = 'First name is too long.';
+    if (!lastName.trim()) errs.lastName = 'Last name is required.';
+    else if (lastName.trim().length > 100) errs.lastName = 'Last name is too long.';
+    if (!email.trim()) errs.email = 'Email is required.';
+    else if (!EMAIL_RULE.test(email.trim())) errs.email = 'Enter a valid email address.';
+    if (!password) errs.password = 'Password is required.';
+    else if (!PASSWORD_RULE.test(password))
+      errs.password = 'Use 10+ chars with uppercase, lowercase, a number and a symbol.';
+    if (!confirm) errs.confirm = 'Please confirm your password.';
+    else if (confirm !== password) errs.confirm = "Passwords don't match.";
+    return errs;
+  }, [firstName, lastName, email, password, confirm]);
 
-  const canSubmit =
-    firstName.trim().length > 0 &&
-    lastName.trim().length  > 0 &&
-    email.includes('@') &&
-    passwordValid &&
-    confirm === password &&
-    agreed;
+  // An error shows once the user has either left that field OR tapped submit.
+  const showError = (field: FieldName) =>
+    (blurred[field] || touched) ? validationErrors[field] : undefined;
+
+  const canSubmit = Object.keys(validationErrors).length === 0 && agreed;
 
   const handleSubmit = async () => {
     setTouched(true);
@@ -99,10 +119,36 @@ export function SignUpScreen({ onSubmit, onSwitchToSignIn, onBack }: Props) {
         <View style={styles.fields}>
           <View style={styles.row}>
             <View style={{ flex: 1 }}>
-              <Input label="First name" value={firstName} onChangeText={setFirstName} placeholder="First name" autoCapitalize="words" />
+              <Input
+                label="First name"
+                value={firstName}
+                onChangeText={setFirstName}
+                onBlur={() => markBlurred('firstName')}
+                placeholder="First name"
+                autoCapitalize="words"
+              />
+              {showError('firstName') ? (
+                <View style={styles.errorRow}>
+                  <AlertCircle size={13} color={colors.error} />
+                  <Text style={styles.errorText}>{showError('firstName')}</Text>
+                </View>
+              ) : null}
             </View>
             <View style={{ flex: 1 }}>
-              <Input label="Last name"  value={lastName}  onChangeText={setLastName}  placeholder="Last name"  autoCapitalize="words" />
+              <Input
+                label="Last name"
+                value={lastName}
+                onChangeText={setLastName}
+                onBlur={() => markBlurred('lastName')}
+                placeholder="Last name"
+                autoCapitalize="words"
+              />
+              {showError('lastName') ? (
+                <View style={styles.errorRow}>
+                  <AlertCircle size={13} color={colors.error} />
+                  <Text style={styles.errorText}>{showError('lastName')}</Text>
+                </View>
+              ) : null}
             </View>
           </View>
 
@@ -110,15 +156,16 @@ export function SignUpScreen({ onSubmit, onSwitchToSignIn, onBack }: Props) {
             label="Email"
             value={email}
             onChangeText={setEmail}
+            onBlur={() => markBlurred('email')}
             placeholder="you@example.com"
             keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
           />
-          {fieldErrors.email ? (
+          {showError('email') || fieldErrors.email ? (
             <View style={styles.errorRow}>
               <AlertCircle size={13} color={colors.error} />
-              <Text style={styles.errorText}>{fieldErrors.email[0]}</Text>
+              <Text style={styles.errorText}>{showError('email') ?? fieldErrors.email?.[0]}</Text>
             </View>
           ) : null}
 
@@ -126,39 +173,30 @@ export function SignUpScreen({ onSubmit, onSwitchToSignIn, onBack }: Props) {
             label="Password"
             value={password}
             onChangeText={setPassword}
+            onBlur={() => markBlurred('password')}
             placeholder="At least 10 characters"
             password
             hint="At least 10 characters with uppercase, lowercase, a number and a symbol."
           />
+          {showError('password') || fieldErrors.password ? (
+            <View style={styles.errorRow}>
+              <AlertCircle size={13} color={colors.error} />
+              <Text style={styles.errorText}>{showError('password') ?? fieldErrors.password?.[0]}</Text>
+            </View>
+          ) : null}
 
           <Input
             label="Confirm password"
             value={confirm}
             onChangeText={setConfirm}
+            onBlur={() => markBlurred('confirm')}
             placeholder="Repeat your password"
             password
           />
-
-          {passwordMismatch ? (
+          {showError('confirm') ? (
             <View style={styles.errorRow}>
               <AlertCircle size={13} color={colors.error} />
-              <Text style={styles.errorText}>Passwords don't match.</Text>
-            </View>
-          ) : null}
-
-          {touched && !passwordMismatch && password.length > 0 && !passwordValid ? (
-            <View style={styles.errorRow}>
-              <AlertCircle size={13} color={colors.error} />
-              <Text style={styles.errorText}>
-                Password must be 10+ chars with uppercase, lowercase, a number and a symbol.
-              </Text>
-            </View>
-          ) : null}
-
-          {fieldErrors.password ? (
-            <View style={styles.errorRow}>
-              <AlertCircle size={13} color={colors.error} />
-              <Text style={styles.errorText}>{fieldErrors.password[0]}</Text>
+              <Text style={styles.errorText}>{showError('confirm')}</Text>
             </View>
           ) : null}
 
