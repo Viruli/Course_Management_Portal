@@ -10,7 +10,8 @@ import { ScreenContainer } from '../../components/ScreenContainer';
 import { AppBar } from '../../components/AppBar';
 import { IconBtn } from '../../components/IconBtn';
 import { Button } from '../../components/Button';
-import { colors } from '../../theme/colors';
+import type { Colors } from '../../theme/colors';
+import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
 import { useCourseBuilderStore } from '../../store/courseBuilderStore';
 import type { BuilderAttachment } from '../../data/types';
 
@@ -45,6 +46,8 @@ const attachmentIcon = (kind: BuilderAttachment['kind']) => {
 };
 
 export function LessonEditorScreen({ route, navigation }: Props) {
+  const colors = useColors();
+  const styles = useThemedStyles(createStyles);
   const { semesterId, subjectId, lessonId } = route.params;
 
   const lesson = useCourseBuilderStore((s) =>
@@ -226,6 +229,7 @@ export function LessonEditorScreen({ route, navigation }: Props) {
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={{ gap: 6 }}>
       <Text style={styles.fieldLabel}>{label}</Text>
@@ -234,7 +238,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   body: { padding: 16, gap: 14, paddingBottom: 110 },
   section: {
     padding: 14, gap: 12,
@@ -263,7 +267,7 @@ const styles = StyleSheet.create({
   ytPreview: { gap: 6 },
   ytPreviewFrame: {
     height: 140, borderRadius: 12,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.brand,
     alignItems: 'center', justifyContent: 'center',
     gap: 4,
   },

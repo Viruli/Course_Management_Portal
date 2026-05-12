@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { colors } from '../theme/colors';
+import type { Colors } from '../theme/colors';
+import { useColors, useThemedStyles } from '../theme/useThemedStyles';
 
 interface Props {
   title?: string;
@@ -12,12 +13,14 @@ interface Props {
 }
 
 export function AppBar({ title, subtitle, leading, trailing, transparent, dark }: Props) {
+  const colors = useColors();
+  const styles = useThemedStyles(createStyles);
   return (
     <View
       style={[
         styles.bar,
         {
-          backgroundColor: transparent ? 'transparent' : dark ? colors.primary : colors.surface,
+          backgroundColor: transparent ? 'transparent' : dark ? colors.brand : colors.surface,
           borderBottomWidth: transparent ? 0 : StyleSheet.hairlineWidth,
           borderBottomColor: colors.stroke,
         },
@@ -44,7 +47,7 @@ export function AppBar({ title, subtitle, leading, trailing, transparent, dark }
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   bar: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -1,7 +1,8 @@
 import React from 'react';
 import { StyleSheet, TextInput, View } from 'react-native';
 import { Search } from 'lucide-react-native';
-import { colors } from '../theme/colors';
+import type { Colors } from '../theme/colors';
+import { useColors, useThemedStyles } from '../theme/useThemedStyles';
 
 interface Props {
   value: string;
@@ -11,6 +12,8 @@ interface Props {
 }
 
 export function SearchField({ value, onChange, placeholder = 'Search', dark }: Props) {
+  const colors = useColors();
+  const styles = useThemedStyles(createStyles);
   return (
     <View
       style={[
@@ -33,7 +36,7 @@ export function SearchField({ value, onChange, placeholder = 'Search', dark }: P
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   wrap: {
     flexDirection: 'row',
     alignItems: 'center',

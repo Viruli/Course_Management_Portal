@@ -1,7 +1,9 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Layers, Clock } from 'lucide-react-native';
-import { colors, shadows } from '../theme/colors';
+import type { Colors } from '../theme/colors';
+import { shadows } from '../theme/colors';
+import { useColors, useThemedStyles } from '../theme/useThemedStyles';
 import { Avatar } from './Avatar';
 import { Progress } from './Progress';
 import { CourseCover } from './CourseCover';
@@ -14,6 +16,8 @@ interface Props {
 }
 
 export function CourseCard({ course, onPress, compact }: Props) {
+  const colors = useColors();
+  const styles = useThemedStyles(createStyles);
   return (
     <Pressable
       onPress={onPress}
@@ -49,7 +53,7 @@ export function CourseCard({ course, onPress, compact }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   wrap: {
     backgroundColor: colors.surface,
     borderColor: colors.stroke,

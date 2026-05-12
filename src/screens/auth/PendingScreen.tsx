@@ -6,19 +6,23 @@ import { Button } from '../../components/Button';
 import { Eyebrow } from '../../components/Eyebrow';
 import { AppBar } from '../../components/AppBar';
 import { IconBtn } from '../../components/IconBtn';
-import { colors } from '../../theme/colors';
+import { toast } from '../../store/uiStore';
+import type { Colors } from '../../theme/colors';
+import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
 
 interface Props {
   onSignOut: () => void;
 }
 
 export function PendingScreen({ onSignOut }: Props) {
+  const colors = useColors();
+  const styles = useThemedStyles(createStyles);
   return (
     <ScreenContainer edges={['top', 'bottom']}>
       <AppBar
         transparent
         leading={<Text style={styles.brand}>EduPath</Text>}
-        trailing={<IconBtn onPress={onSignOut}><LogOut size={18} color={colors.primary} /></IconBtn>}
+        trailing={<IconBtn onPress={() => { toast.info('Signed out.'); onSignOut(); }}><LogOut size={18} color={colors.primary} /></IconBtn>}
       />
       <View style={styles.body}>
         <View style={styles.center}>
@@ -38,14 +42,14 @@ export function PendingScreen({ onSignOut }: Props) {
           </View>
         </View>
         <View style={styles.actions}>
-          <Button full variant="secondary" onPress={onSignOut} leftIcon={<LogOut size={16} color={colors.primary} />}>Sign out</Button>
+          <Button full variant="secondary" onPress={() => { toast.info('Signed out.'); onSignOut(); }} leftIcon={<LogOut size={16} color={colors.primary} />}>Sign out</Button>
         </View>
       </View>
     </ScreenContainer>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   brand: { fontSize: 16, fontWeight: '800', color: colors.primary, letterSpacing: -0.3 },
   body: { flex: 1, paddingHorizontal: 24, paddingBottom: 24, justifyContent: 'space-between' },
   center: { alignItems: 'center', gap: 14, paddingTop: 40 },

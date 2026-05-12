@@ -7,7 +7,9 @@ import { AppBar } from '../../components/AppBar';
 import { IconBtn } from '../../components/IconBtn';
 import { Pill } from '../../components/Pill';
 import { AUDIT } from '../../data/mock';
-import { colors } from '../../theme/colors';
+import { toast } from '../../store/uiStore';
+import type { Colors } from '../../theme/colors';
+import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
 import type { AuditTone } from '../../data/types';
 
 type Filter = 'all' | AuditTone;
@@ -19,18 +21,27 @@ const filters: { id: Filter; label: string }[] = [
   { id: 'warning', label: 'Warnings' },
 ];
 
-const toneBg = (t: AuditTone) =>
+const toneBg = (t: AuditTone, colors: Colors) =>
   t === 'success' ? colors.successBg : t === 'warning' ? colors.warningBg : colors.infoBg;
-const toneFg = (t: AuditTone) =>
+const toneFg = (t: AuditTone, colors: Colors) =>
   t === 'success' ? colors.successDeep : t === 'warning' ? colors.warning : colors.info;
 
 export function AuditScreen() {
+  const colors = useColors();
+  const styles = useThemedStyles(createStyles);
   const [filter, setFilter] = useState<Filter>('all');
   const list = filter === 'all' ? AUDIT : AUDIT.filter(a => a.tone === filter);
 
   return (
     <ScreenContainer edges={['top']} bg={colors.surface2}>
-      <AppBar title="Audit log" trailing={<IconBtn><Download size={18} color={colors.primary} /></IconBtn>} />
+      <AppBar
+        title="Audit log"
+        trailing={
+          <IconBtn onPress={() => toast.success('Audit log exported.')}>
+            <Download size={18} color={colors.primary} />
+          </IconBtn>
+        }
+      />
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
         <ScrollView
           horizontal
@@ -52,8 +63,8 @@ export function AuditScreen() {
             const Icon = (Icons as any)[l.ico] ?? Icons.Activity;
             return (
               <View key={l.id} style={[styles.item, i < arr.length - 1 && styles.itemBorder]}>
-                <View style={[styles.icoWrap, { backgroundColor: toneBg(l.tone) }]}>
-                  <Icon size={16} color={toneFg(l.tone)} />
+                <View style={[styles.icoWrap, { backgroundColor: toneBg(l.tone, colors) }]}>
+                  <Icon size={16} color={toneFg(l.tone, colors)} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.title}>{l.what}</Text>
@@ -69,7 +80,7 @@ export function AuditScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   body: { padding: 16, gap: 14, paddingBottom: 100 },
   filterRow: { gap: 6, paddingRight: 16 },
   list: {

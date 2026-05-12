@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { colors } from '../theme/colors';
+import type { Colors } from '../theme/colors';
+import { useColors, useThemedStyles } from '../theme/useThemedStyles';
 
 interface Props {
   children: React.ReactNode;
@@ -10,6 +11,8 @@ interface Props {
 }
 
 export function Eyebrow({ children, dark, lime, icon }: Props) {
+  const colors = useColors();
+  const styles = useThemedStyles(createStyles);
   const bg = lime ? colors.accent
     : dark ? 'rgba(255,255,255,0.08)'
     : colors.lightGray;
@@ -24,7 +27,7 @@ export function Eyebrow({ children, dark, lime, icon }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   wrap: {
     flexDirection: 'row',
     alignItems: 'center',

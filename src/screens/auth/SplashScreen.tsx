@@ -3,7 +3,8 @@ import { Image, StyleSheet, Text, View } from 'react-native';
 import { GraduationCap } from 'lucide-react-native';
 import { ScreenContainer } from '../../components/ScreenContainer';
 import { Button } from '../../components/Button';
-import { colors } from '../../theme/colors';
+import type { Colors } from '../../theme/colors';
+import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
 
 interface Props {
   onGetStarted: () => void;
@@ -11,6 +12,8 @@ interface Props {
 }
 
 export function SplashScreen({ onGetStarted, onSignIn }: Props) {
+  const colors = useColors();
+  const styles = useThemedStyles(createStyles);
   return (
     <ScreenContainer dark edges={['top', 'bottom']} contentStyle={styles.content}>
       <View style={styles.halo} pointerEvents="none" />
@@ -29,7 +32,7 @@ export function SplashScreen({ onGetStarted, onSignIn }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   content: { padding: 32, justifyContent: 'space-between' },
   halo: {
     position: 'absolute',

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { colors } from '../theme/colors';
+import type { Colors } from '../theme/colors';
+import { useColors, useThemedStyles } from '../theme/useThemedStyles';
 
 export interface TabItem {
   id: string;
@@ -16,6 +17,8 @@ interface Props {
 }
 
 export function Tabs({ items, active, onChange, scrollable }: Props) {
+  const colors = useColors();
+  const styles = useThemedStyles(createStyles);
   const content = items.map(it => {
     const isActive = it.id === active;
     return (
@@ -49,7 +52,7 @@ export function Tabs({ items, active, onChange, scrollable }: Props) {
   return <View style={styles.row}>{content}</View>;
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   row: { flexDirection: 'row', gap: 4, padding: 4, backgroundColor: colors.lightGray, borderRadius: 12 },
   scrollRow: { gap: 8, paddingHorizontal: 4 },
   item: {

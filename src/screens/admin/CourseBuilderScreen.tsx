@@ -11,8 +11,10 @@ import { AppBar } from '../../components/AppBar';
 import { IconBtn } from '../../components/IconBtn';
 import { Button } from '../../components/Button';
 import { Pill } from '../../components/Pill';
-import { colors } from '../../theme/colors';
+import type { Colors } from '../../theme/colors';
+import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
 import { useCourseBuilderStore } from '../../store/courseBuilderStore';
+import { toast } from '../../store/uiStore';
 import type { CourseType } from '../../data/types';
 
 interface Props {
@@ -26,6 +28,8 @@ const courseTypes: CourseType[] = [
 ];
 
 export function CourseBuilderScreen({ navigation }: Props) {
+  const colors = useColors();
+  const styles = useThemedStyles(createStyles);
   const course = useCourseBuilderStore((s) => s.course);
   const isEditing = useCourseBuilderStore((s) => s.isEditing);
   const {
@@ -259,7 +263,10 @@ export function CourseBuilderScreen({ navigation }: Props) {
             variant="secondary"
             size="lg"
             full
-            onPress={() => navigation.goBack()}
+            onPress={() => {
+              toast.info(course.title.trim() ? `Draft saved: "${course.title}".` : 'Draft saved.');
+              navigation.goBack();
+            }}
           >
             Save draft
           </Button>
@@ -269,7 +276,10 @@ export function CourseBuilderScreen({ navigation }: Props) {
             size="lg"
             full
             disabled={!course.title.trim() || course.semesters.length === 0}
-            onPress={() => navigation.goBack()}
+            onPress={() => {
+              toast.success(`${isEditing ? 'Updated' : 'Published'}: "${course.title}".`);
+              navigation.goBack();
+            }}
           >
             {isEditing ? 'Update' : 'Publish'}
           </Button>
@@ -280,6 +290,7 @@ export function CourseBuilderScreen({ navigation }: Props) {
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={{ gap: 6 }}>
       <Text style={styles.fieldLabel}>{label}</Text>
@@ -288,7 +299,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   body: { padding: 16, gap: 16, paddingBottom: 110 },
   section: {
     padding: 14, gap: 14,
@@ -323,7 +334,7 @@ const styles = StyleSheet.create({
 
   // Semester (dark card)
   semester: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.brand,
     borderRadius: 14,
     overflow: 'hidden',
   },

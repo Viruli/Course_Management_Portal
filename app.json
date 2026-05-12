@@ -13,7 +13,11 @@
     "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.futurecx.slpmobile"
+      "bundleIdentifier": "com.futurecx.slpmobile",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Allow CMP to choose a profile photo from your library.",
+        "NSCameraUsageDescription": "Allow CMP to take a profile photo."
+      }
     },
     "android": {
       "package": "com.futurecx.slpmobile",
@@ -22,6 +26,14 @@
         "backgroundColor": "#152A24"
       }
     },
-    "plugins": ["expo-secure-store"]
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow CMP to choose a profile photo from your library."
+        }
+      ]
+    ]
   }
 }

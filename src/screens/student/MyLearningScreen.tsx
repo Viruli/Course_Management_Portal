@@ -8,7 +8,9 @@ import { Tabs } from '../../components/Tabs';
 import { RecCard } from '../../components/RecCard';
 import { EmptyState } from '../../components/EmptyState';
 import { COURSES } from '../../data/mock';
-import { colors } from '../../theme/colors';
+import { toast } from '../../store/uiStore';
+import type { Colors } from '../../theme/colors';
+import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
 import type { Course } from '../../data/types';
 
 interface Props {
@@ -16,6 +18,8 @@ interface Props {
 }
 
 export function MyLearningScreen({ onCourse }: Props) {
+  const colors = useColors();
+  const styles = useThemedStyles(createStyles);
   const [tab, setTab] = useState('progress');
   const inProgress = COURSES.filter(c => c.progress > 0);
   const enrolled = COURSES.filter(c => c.progress === 0).slice(0, 2);
@@ -24,7 +28,7 @@ export function MyLearningScreen({ onCourse }: Props) {
     <ScreenContainer edges={['top']} bg={colors.surface2}>
       <AppBar
         title="My Learning"
-        trailing={<IconBtn><Search size={18} color={colors.primary} /></IconBtn>}
+        trailing={<IconBtn onPress={() => toast.info('Search across your learning coming soon.')}><Search size={18} color={colors.primary} /></IconBtn>}
       />
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
         {/* Stats card */}
@@ -93,11 +97,11 @@ export function MyLearningScreen({ onCourse }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   body: { padding: 16, gap: 14, paddingBottom: 100 },
   statsCard: {
     padding: 16, borderRadius: 16,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.brand,
     overflow: 'hidden', position: 'relative',
   },
   statsGlow: {

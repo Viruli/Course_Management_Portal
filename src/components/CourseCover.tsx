@@ -1,7 +1,9 @@
 import React from 'react';
 import { StyleSheet, Text, View, ViewStyle } from 'react-native';
 import * as Icons from 'lucide-react-native';
-import { colors, coverPalette } from '../theme/colors';
+import type { Colors } from '../theme/colors';
+import { coverPalette } from '../theme/colors';
+import { useColors, useThemedStyles } from '../theme/useThemedStyles';
 import type { CourseKind } from '../data/types';
 
 interface Props {
@@ -14,6 +16,7 @@ interface Props {
 }
 
 export function CourseCover({ kind, emblem, tag, pct, height = 130, style }: Props) {
+  const styles = useThemedStyles(createStyles);
   const palette = coverPalette(kind);
   const EmblemIcon = (Icons as any)[emblem] ?? Icons.BookOpen;
 
@@ -36,7 +39,7 @@ export function CourseCover({ kind, emblem, tag, pct, height = 130, style }: Pro
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   wrap: {
     borderRadius: 14,
     padding: 12,

@@ -1,7 +1,8 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ArrowRight, Layers, Star } from 'lucide-react-native';
-import { colors } from '../theme/colors';
+import type { Colors } from '../theme/colors';
+import { useColors, useThemedStyles } from '../theme/useThemedStyles';
 import { CourseCover } from './CourseCover';
 import type { Course } from '../data/types';
 
@@ -11,6 +12,8 @@ interface Props {
 }
 
 export function RecCard({ course, onPress }: Props) {
+  const colors = useColors();
+  const styles = useThemedStyles(createStyles);
   return (
     <Pressable
       onPress={onPress}
@@ -42,7 +45,7 @@ export function RecCard({ course, onPress }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   wrap: {
     flexDirection: 'row',
     gap: 10,

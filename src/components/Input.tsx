@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native';
 import { Eye, EyeOff } from 'lucide-react-native';
-import { colors } from '../theme/colors';
+import type { Colors } from '../theme/colors';
+import { useColors, useThemedStyles } from '../theme/useThemedStyles';
 
 interface Props extends TextInputProps {
   label?: string;
@@ -10,6 +11,8 @@ interface Props extends TextInputProps {
 }
 
 export function Input({ label, hint, password, style, ...rest }: Props) {
+  const colors = useColors();
+  const styles = useThemedStyles(createStyles);
   const [show, setShow] = useState(false);
 
   return (
@@ -33,7 +36,7 @@ export function Input({ label, hint, password, style, ...rest }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   field: { gap: 6 },
   label: { fontSize: 12, fontWeight: '600', color: colors.bodyGreen },
   wrap: {

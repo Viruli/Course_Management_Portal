@@ -10,7 +10,8 @@ import { Avatar } from '../../components/Avatar';
 import { SearchField } from '../../components/SearchField';
 import { Pill } from '../../components/Pill';
 import { Badge } from '../../components/Badge';
-import { colors } from '../../theme/colors';
+import type { Colors } from '../../theme/colors';
+import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
 import { useUsersStore } from '../../store/usersStore';
 import type { AppRole, AppUser } from '../../data/types';
 
@@ -28,6 +29,8 @@ const filters: { id: FilterId; label: string }[] = [
 ];
 
 export function UsersScreen({ navigation }: Props) {
+  const colors = useColors();
+  const styles = useThemedStyles(createStyles);
   const users = useUsersStore((s) => s.users);
   const [filter, setFilter] = useState<FilterId>('all');
   const [q, setQ] = useState('');
@@ -88,6 +91,8 @@ export function UsersScreen({ navigation }: Props) {
 }
 
 function UserRow({ user, onPress }: { user: AppUser; onPress: () => void }) {
+  const colors = useColors();
+  const styles = useThemedStyles(createStyles);
   const RoleIcon = user.role === 'super' ? ShieldCheck : user.role === 'admin' ? Shield : GraduationCap;
   const roleLabel = user.role === 'super' ? 'Super Admin' : user.role === 'admin' ? 'Admin' : 'Student';
 
@@ -117,7 +122,7 @@ function UserRow({ user, onPress }: { user: AppUser; onPress: () => void }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   searchBar: {
     paddingHorizontal: 16, paddingVertical: 10, gap: 10,
     backgroundColor: colors.surface,

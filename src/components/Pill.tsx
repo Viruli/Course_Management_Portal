@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text } from 'react-native';
-import { colors } from '../theme/colors';
+import type { Colors } from '../theme/colors';
+import { useColors, useThemedStyles } from '../theme/useThemedStyles';
 
 interface Props {
   children: React.ReactNode;
@@ -10,13 +11,15 @@ interface Props {
 }
 
 export function Pill({ children, active, onPress, dark }: Props) {
+  const colors = useColors();
+  const styles = useThemedStyles(createStyles);
   return (
     <Pressable
       onPress={onPress}
       style={[
         styles.base,
         active
-          ? { backgroundColor: dark ? colors.accent : colors.primary, borderColor: dark ? colors.accent : colors.primary }
+          ? { backgroundColor: dark ? colors.accent : colors.brand, borderColor: dark ? colors.accent : colors.primary }
           : { backgroundColor: dark ? 'rgba(255,255,255,0.06)' : colors.surface, borderColor: dark ? 'rgba(255,255,255,0.16)' : colors.stroke },
       ]}
     >
@@ -36,7 +39,7 @@ export function Pill({ children, active, onPress, dark }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   base: {
     paddingHorizontal: 14,
     height: 32,

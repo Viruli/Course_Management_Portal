@@ -12,8 +12,10 @@ import { ProfileScreen } from '../screens/student/ProfileScreen';
 import { CourseDetailScreen } from '../screens/student/CourseDetailScreen';
 import { LessonPlayerScreen } from '../screens/student/LessonPlayerScreen';
 import { NotificationsScreen } from '../screens/student/NotificationsScreen';
-import { NOTIFS_STUDENT } from '../data/mock';
-import { colors } from '../theme/colors';
+import { EditProfileScreen } from '../screens/shared/EditProfileScreen';
+import { useNotificationsStore } from '../store/notificationsStore';
+import type { Colors } from '../theme/colors';
+import { useColors, useThemedStyles } from '../theme/useThemedStyles';
 import type { Course } from '../data/types';
 
 type TabId = 'home' | 'browse' | 'mine' | 'profile';
@@ -28,6 +30,8 @@ const tabs: { id: TabId; label: string; Icon: any }[] = [
 ];
 
 function BottomNav({ active, onChange }: { active: TabId; onChange: (id: TabId) => void }) {
+  const colors = useColors();
+  const styles = useThemedStyles(createStyles);
   return (
     <SafeAreaView edges={['bottom']} style={styles.navWrap}>
       <View style={styles.nav}>
@@ -48,9 +52,11 @@ function BottomNav({ active, onChange }: { active: TabId; onChange: (id: TabId) 
 }
 
 function StudentMain({ navigation }: any) {
+  const colors = useColors();
   const [tab, setTab] = React.useState<TabId>('home');
   const goCourse = (c: Course) => navigation.navigate('CourseDetail', { course: c });
   const goBell = () => navigation.navigate('Notifications');
+  const goEditProfile = () => navigation.navigate('EditProfile');
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
@@ -58,7 +64,7 @@ function StudentMain({ navigation }: any) {
         {tab === 'home'    && <StudentHomeScreen   onContinue={() => navigation.navigate('LessonPlayer')} onCourse={goCourse} onTabChange={setTab} onBell={goBell} />}
         {tab === 'browse'  && <StudentBrowseScreen onCourse={goCourse} />}
         {tab === 'mine'    && <MyLearningScreen    onCourse={goCourse} />}
-        {tab === 'profile' && <ProfileScreen       onTabChange={setTab} onBell={goBell} />}
+        {tab === 'profile' && <ProfileScreen       onTabChange={setTab} onBell={goBell} onEditProfile={goEditProfile} />}
       </View>
       <BottomNav active={tab} onChange={setTab} />
     </View>
@@ -89,22 +95,38 @@ export function StudentTabs() {
       </Stack.Screen>
       <Stack.Screen name="Notifications">
         {({ navigation }) => (
-          <NotificationsScreen
-            items={NOTIFS_STUDENT}
-            onBack={() => navigation.goBack()}
-          />
+          <StudentNotifications onBack={() => navigation.goBack()} />
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="EditProfile">
+        {({ navigation }) => (
+          <EditProfileScreen role="student" onBack={() => navigation.goBack()} />
         )}
       </Stack.Screen>
     </Stack.Navigator>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   navWrap: { backgroundColor: colors.surface, borderTopColor: colors.stroke, borderTopWidth: StyleSheet.hairlineWidth },
   nav: { flexDirection: 'row', paddingHorizontal: 8, paddingVertical: 6 },
   item: { flex: 1, alignItems: 'center', paddingVertical: 4, gap: 2 },
   pill: { paddingHorizontal: 16, paddingVertical: 4, borderRadius: 9999 },
-  pillActive: { backgroundColor: colors.primary },
+  pillActive: { backgroundColor: colors.brand },
   label: { fontSize: 10, color: colors.bodyGreen, fontWeight: '600' },
   labelActive: { color: colors.primary },
 });
+
+function StudentNotifications({ onBack }: { onBack: () => void }) {
+  const items = useNotificationsStore((s) => s.byAudience.student);
+  const markRead    = useNotificationsStore((s) => s.markRead);
+  const markAllRead = useNotificationsStore((s) => s.markAllRead);
+  return (
+    <NotificationsScreen
+      items={items}
+      onBack={onBack}
+      onMarkAll={() => markAllRead('student')}
+      onItemPress={(id) => markRead('student', id)}
+    />
+  );
+}

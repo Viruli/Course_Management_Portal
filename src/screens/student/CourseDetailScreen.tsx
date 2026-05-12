@@ -13,7 +13,9 @@ import { Tabs } from '../../components/Tabs';
 import { CourseCover } from '../../components/CourseCover';
 import { Button } from '../../components/Button';
 import { LESSON, SAMPLE_BUILDER_COURSE } from '../../data/mock';
-import { colors } from '../../theme/colors';
+import { toast } from '../../store/uiStore';
+import type { Colors } from '../../theme/colors';
+import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
 import type { Course, BuilderSemester, BuilderLesson } from '../../data/types';
 
 interface Props {
@@ -24,8 +26,21 @@ interface Props {
 }
 
 export function CourseDetailScreen({ course, onBack, onPlay, onEnrol }: Props) {
+  const colors = useColors();
+  const styles = useThemedStyles(createStyles);
   const [tab, setTab] = useState('overview');
+  const [bookmarked, setBookmarked] = useState(false);
   const enrolled = course.progress > 0;
+
+  const handleBookmark = () => {
+    setBookmarked((b) => {
+      const next = !b;
+      toast.info(next ? `Bookmarked "${course.title}".` : 'Removed bookmark.');
+      return next;
+    });
+  };
+  const handleShare = () => toast.info(`Sharing "${course.title}"…`);
+  const handleMessageInstructor = () => toast.info(`Opening chat with ${course.instructor}.`);
 
   const curriculum = SAMPLE_BUILDER_COURSE.semesters;
   const totalLessons = useMemo(
@@ -40,8 +55,10 @@ export function CourseDetailScreen({ course, onBack, onPlay, onEnrol }: Props) {
         leading={<IconBtn onPress={onBack}><ArrowLeft size={20} color={colors.primary} /></IconBtn>}
         trailing={
           <>
-            <IconBtn><Bookmark size={18} color={colors.primary} /></IconBtn>
-            <IconBtn><Share2 size={18} color={colors.primary} /></IconBtn>
+            <IconBtn onPress={handleBookmark}>
+              <Bookmark size={18} color={bookmarked ? colors.successDeep : colors.primary} fill={bookmarked ? colors.success : 'none'} />
+            </IconBtn>
+            <IconBtn onPress={handleShare}><Share2 size={18} color={colors.primary} /></IconBtn>
           </>
         }
       />
@@ -64,14 +81,14 @@ export function CourseDetailScreen({ course, onBack, onPlay, onEnrol }: Props) {
             <Text style={styles.metaT}>{course.lessons} lessons</Text>
           </View>
 
-          <View style={styles.instructorRow}>
+          <Pressable style={styles.instructorRow} onPress={handleMessageInstructor}>
             <Avatar size={40} name={course.instructor} variant="dark" />
             <View style={{ flex: 1 }}>
               <Text style={styles.instructorLabel}>Instructor</Text>
               <Text style={styles.instructorName}>{course.instructor}</Text>
             </View>
             <MessageCircle size={18} color={colors.bodyGreen} />
-          </View>
+          </Pressable>
         </View>
 
         <View style={styles.tabsWrap}>
@@ -181,7 +198,10 @@ export function CourseDetailScreen({ course, onBack, onPlay, onEnrol }: Props) {
         {enrolled ? (
           <Button size="lg" leftIcon={<Play size={16} color={colors.white} />} onPress={onPlay}>Resume</Button>
         ) : (
-          <Button size="lg" leftIcon={<Plus size={16} color={colors.white} />} onPress={onEnrol}>Request enrol</Button>
+          <Button size="lg" leftIcon={<Plus size={16} color={colors.white} />} onPress={() => {
+            toast.success(`Enrolment request submitted for "${course.title}".`);
+            onEnrol();
+          }}>Request enrol</Button>
         )}
       </View>
     </ScreenContainer>
@@ -189,6 +209,8 @@ export function CourseDetailScreen({ course, onBack, onPlay, onEnrol }: Props) {
 }
 
 function CurriculumTree({ semesters, onPlayActive }: { semesters: BuilderSemester[]; onPlayActive: () => void }) {
+  const colors = useColors();
+  const styles = useThemedStyles(createStyles);
   // First semester open by default.
   const [open, setOpen] = useState<Record<string, boolean>>(() => {
     const init: Record<string, boolean> = {};
@@ -256,6 +278,8 @@ function CurriculumTree({ semesters, onPlayActive }: { semesters: BuilderSemeste
 function CurriculumLesson({
   index, lesson, isActive, onPress,
 }: { index: number; lesson: BuilderLesson; isActive?: boolean; onPress?: () => void }) {
+  const colors = useColors();
+  const styles = useThemedStyles(createStyles);
   const Icon = isActive ? PlayCircle : CheckCircle;
   const iconColor = isActive ? colors.successDeep : colors.muted;
   return (
@@ -294,7 +318,7 @@ function CurriculumLesson({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   coverWrap: { paddingHorizontal: 16 },
   head: { paddingHorizontal: 16, paddingTop: 16 },
   title: { fontSize: 22, fontWeight: '700', color: colors.primary, letterSpacing: -0.4, lineHeight: 26 },
@@ -334,7 +358,7 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 14, fontWeight: '700', color: colors.primary },
   learnRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   learnText: { flex: 1, fontSize: 13, color: colors.bodyGreen, lineHeight: 18 },
-  curSemester: { backgroundColor: colors.primary, borderRadius: 14, overflow: 'hidden' },
+  curSemester: { backgroundColor: colors.brand, borderRadius: 14, overflow: 'hidden' },
   curSemHead: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12 },
   curSemIco: {
     width: 32, height: 32, borderRadius: 9,

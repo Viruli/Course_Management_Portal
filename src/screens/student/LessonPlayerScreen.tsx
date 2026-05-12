@@ -9,7 +9,9 @@ import { IconBtn } from '../../components/IconBtn';
 import { Tabs } from '../../components/Tabs';
 import { Button } from '../../components/Button';
 import { LESSON } from '../../data/mock';
-import { colors } from '../../theme/colors';
+import { toast } from '../../store/uiStore';
+import type { Colors } from '../../theme/colors';
+import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
 
 interface Props {
   onBack: () => void;
@@ -19,6 +21,8 @@ interface Props {
 const matIcons: Record<string, any> = { FileText, FilePen, Video };
 
 export function LessonPlayerScreen({ onBack, onComplete }: Props) {
+  const colors = useColors();
+  const styles = useThemedStyles(createStyles);
   const [tab, setTab] = useState('about');
   const [playing, setPlaying] = useState(true);
   const [notes, setNotes] = useState(
@@ -31,8 +35,8 @@ export function LessonPlayerScreen({ onBack, onComplete }: Props) {
         <View style={styles.videoTop}>
           <IconBtn dark onPress={onBack}><ChevronDown size={20} color={colors.white} /></IconBtn>
           <View style={{ flexDirection: 'row', gap: 4 }}>
-            <IconBtn dark><Cast size={18} color={colors.white} /></IconBtn>
-            <IconBtn dark><MoreVertical size={18} color={colors.white} /></IconBtn>
+            <IconBtn dark onPress={() => toast.info('Looking for cast devices…')}><Cast size={18} color={colors.white} /></IconBtn>
+            <IconBtn dark onPress={() => toast.info('More options coming soon.')}><MoreVertical size={18} color={colors.white} /></IconBtn>
           </View>
         </View>
 
@@ -97,7 +101,7 @@ export function LessonPlayerScreen({ onBack, onComplete }: Props) {
                     <Text style={styles.matName}>{m.name}</Text>
                     <Text style={styles.matSize}>{m.size}</Text>
                   </View>
-                  <IconBtn><Download size={16} color={colors.primary} /></IconBtn>
+                  <IconBtn onPress={() => toast.success(`Downloading ${m.name}.`)}><Download size={16} color={colors.primary} /></IconBtn>
                 </View>
               );
             })}
@@ -113,23 +117,23 @@ export function LessonPlayerScreen({ onBack, onComplete }: Props) {
               style={styles.notes}
               textAlignVertical="top"
             />
-            <Button variant="secondary" full leftIcon={<Save size={16} color={colors.primary} />}>Save notes</Button>
+            <Button variant="secondary" full leftIcon={<Save size={16} color={colors.primary} />} onPress={() => toast.success('Notes saved.')}>Save notes</Button>
           </View>
         )}
       </ScrollView>
 
       <View style={styles.stickyBar}>
-        <Button variant="secondary" size="lg" leftIcon={<ChevronLeft size={16} color={colors.primary} />} />
+        <Button variant="secondary" size="lg" leftIcon={<ChevronLeft size={16} color={colors.primary} />} onPress={() => toast.info('Previous lesson.')} />
         <View style={{ flex: 1 }}>
-          <Button size="lg" full leftIcon={<Check size={16} color={colors.white} />} onPress={onComplete}>Mark complete</Button>
+          <Button size="lg" full leftIcon={<Check size={16} color={colors.white} />} onPress={() => { toast.success('Lesson marked complete.'); onComplete(); }}>Mark complete</Button>
         </View>
-        <Button variant="secondary" size="lg" leftIcon={<ChevronRight size={16} color={colors.primary} />} />
+        <Button variant="secondary" size="lg" leftIcon={<ChevronRight size={16} color={colors.primary} />} onPress={() => toast.info('Next lesson.')} />
       </View>
     </ScreenContainer>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   video: {
     height: 230,
     backgroundColor: '#0E1A16',

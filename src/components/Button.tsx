@@ -7,7 +7,8 @@ import {
   ActivityIndicator,
   ViewStyle,
 } from 'react-native';
-import { colors } from '../theme/colors';
+import type { Colors } from '../theme/colors';
+import { useColors, useThemedStyles } from '../theme/useThemedStyles';
 import { typography } from '../theme/typography';
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'ghost-on-dark' | 'lime';
@@ -36,11 +37,13 @@ export function Button({
   children, variant = 'primary', size = 'md', full, loading, disabled,
   onPress, leftIcon, rightIcon, style,
 }: Props) {
+  const colors = useColors();
+  const styles = useThemedStyles(createStyles);
   const s = sizeMap[size];
 
   const palette = (() => {
     switch (variant) {
-      case 'primary':       return { bg: colors.primary, fg: colors.white, border: colors.primary };
+      case 'primary':       return { bg: colors.brand, fg: colors.white, border: colors.primary };
       case 'secondary':     return { bg: colors.surface, fg: colors.primary, border: colors.stroke };
       case 'ghost':         return { bg: 'transparent', fg: colors.primary, border: 'transparent' };
       case 'ghost-on-dark': return { bg: 'rgba(255,255,255,0.06)', fg: colors.white, border: 'rgba(255,255,255,0.16)' };
@@ -80,7 +83,7 @@ export function Button({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   base: {
     borderRadius: 9999,
     borderWidth: 1,

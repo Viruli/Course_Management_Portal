@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ArrowRight } from 'lucide-react-native';
-import { colors } from '../theme/colors';
+import { useColors } from '../theme/useThemedStyles';
 
 interface Props {
   title: string;
@@ -11,6 +11,7 @@ interface Props {
 }
 
 export function SectionHeader({ title, actionLabel, onAction, dark }: Props) {
+  const colors = useColors();
   return (
     <View style={styles.row}>
       <Text style={[styles.title, { color: dark ? colors.white : colors.primary }]}>{title}</Text>

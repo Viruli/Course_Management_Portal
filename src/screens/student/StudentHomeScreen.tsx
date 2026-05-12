@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
-  Search, Bell, Play, Calculator, FlaskConical, BookOpen, Landmark,
+  Bell, Play, Calculator, FlaskConical, BookOpen, Landmark,
   Languages, Terminal, Briefcase, Palette,
 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,32 +12,50 @@ import { Stat } from '../../components/Stat';
 import { CourseCard } from '../../components/CourseCard';
 import { RecCard } from '../../components/RecCard';
 import { SectionHeader } from '../../components/SectionHeader';
-import { COURSES, STUDENT, LESSON } from '../../data/mock';
-import { colors } from '../../theme/colors';
-import type { Course } from '../../data/types';
+import { COURSES, LESSON } from '../../data/mock';
+import { useProfileStore, fullName } from '../../store/profileStore';
+import { useNotificationsStore } from '../../store/notificationsStore';
+import { toast } from '../../store/uiStore';
+import type { Colors } from '../../theme/colors';
+import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
+import type { Course, CourseKind } from '../../data/types';
 
 interface Props {
   onContinue: () => void;
   onCourse: (c: Course) => void;
   onTabChange: (tab: 'home' | 'browse' | 'mine' | 'profile') => void;
   onBell: () => void;
+  onCategory?: (kind: CourseKind | null) => void;
 }
 
-const categories = [
-  { Icon: Calculator,   label: 'Math' },
-  { Icon: FlaskConical, label: 'Science' },
-  { Icon: BookOpen,     label: 'Lang Arts' },
-  { Icon: Landmark,     label: 'Social' },
-  { Icon: Languages,    label: 'Languages' },
-  { Icon: Terminal,     label: 'Computing' },
-  { Icon: Briefcase,    label: 'Business' },
-  { Icon: Palette,      label: 'Creative' },
+const categories: { Icon: any; label: string; kind: CourseKind | null }[] = [
+  { Icon: Calculator,   label: 'Math',      kind: 'math' },
+  { Icon: FlaskConical, label: 'Science',   kind: 'sci' },
+  { Icon: BookOpen,     label: 'Lang Arts', kind: 'lit' },
+  { Icon: Landmark,     label: 'Social',    kind: 'soc' },
+  { Icon: Languages,    label: 'Languages', kind: 'lang' },
+  { Icon: Terminal,     label: 'Computing', kind: 'cs' },
+  { Icon: Briefcase,    label: 'Business',  kind: null },
+  { Icon: Palette,      label: 'Creative',  kind: null },
 ];
 
-export function StudentHomeScreen({ onContinue, onCourse, onTabChange, onBell }: Props) {
+export function StudentHomeScreen({ onContinue, onCourse, onTabChange, onBell, onCategory }: Props) {
+  const colors = useColors();
+  const styles = useThemedStyles(createStyles);
   const inProgress = COURSES.filter(c => c.progress > 0);
   const recommended = COURSES.filter(c => c.progress === 0).slice(0, 2);
   const current = COURSES.find(c => c.id === 'math')!;
+
+  const profile = useProfileStore((s) => s.profiles.student);
+  const unread = useNotificationsStore((s) => s.byAudience.student.filter((n) => !n.read).length);
+
+  const handleCategory = (kind: CourseKind | null, label: string) => {
+    if (onCategory) onCategory(kind);
+    else {
+      onTabChange('browse');
+      if (!kind) toast.info(`${label} catalog coming soon.`);
+    }
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.pageBg }}>
@@ -45,17 +63,17 @@ export function StudentHomeScreen({ onContinue, onCourse, onTabChange, onBell }:
         {/* Hero */}
         <SafeAreaView edges={['top']} style={styles.hero}>
           <View style={styles.heroGlow} pointerEvents="none" />
-          <View style={styles.heroTop}>
-            <View style={styles.greetRow}>
-              <Avatar size={38} name={STUDENT.name} variant="lime" />
-              <View>
-                <Text style={styles.hello}>Hello 👋</Text>
-                <Text style={styles.greetName}>{STUDENT.name.split(' ')[0]}</Text>
-              </View>
-            </View>
-            <View style={styles.heroIcons}>
-              <IconBtn dark><Search size={18} color={colors.white} /></IconBtn>
-              <IconBtn dark dot onPress={onBell}><Bell size={18} color={colors.white} /></IconBtn>
+
+          {/* Clean title bar */}
+          <View style={styles.titleBar}>
+            <Text style={styles.brand}>EduPath</Text>
+            <View style={styles.titleBarActions}>
+              <IconBtn dark badge={unread} onPress={onBell}>
+                <Bell size={18} color={colors.white} />
+              </IconBtn>
+              <Pressable onPress={() => onTabChange('profile')} style={styles.avatarBtn}>
+                <Avatar size={36} name={fullName(profile)} variant="lime" photoUri={profile.photoUri} />
+              </Pressable>
             </View>
           </View>
 
@@ -84,9 +102,9 @@ export function StudentHomeScreen({ onContinue, onCourse, onTabChange, onBell }:
         <View style={styles.body}>
           {/* Stats row */}
           <View style={styles.statsRow}>
-            <Stat icon="BookOpen" label="Enrolled" value={STUDENT.enrolled} />
-            <Stat icon="Clock" label="Hours" value={STUDENT.hours} />
-            <Stat icon="Flame" label="Day streak" value={STUDENT.streak} delta="+1" />
+            <Stat icon="BookOpen" label="Enrolled" value={profile.enrolled ?? 0} />
+            <Stat icon="Clock" label="Hours" value={profile.hours ?? 0} />
+            <Stat icon="Flame" label="Day streak" value={profile.streak ?? 0} delta="+1" />
           </View>
 
           {/* In progress */}
@@ -113,7 +131,7 @@ export function StudentHomeScreen({ onContinue, onCourse, onTabChange, onBell }:
               {categories.map(cat => (
                 <Pressable
                   key={cat.label}
-                  onPress={() => onTabChange('browse')}
+                  onPress={() => handleCategory(cat.kind, cat.label)}
                   style={styles.catItem}
                 >
                   <View style={styles.catIcon}>
@@ -140,9 +158,9 @@ export function StudentHomeScreen({ onContinue, onCourse, onTabChange, onBell }:
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   hero: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.brand,
     paddingHorizontal: 16,
     paddingBottom: 24,
     borderBottomLeftRadius: 24,
@@ -154,12 +172,22 @@ const styles = StyleSheet.create({
     width: 220, height: 220, borderRadius: 110,
     backgroundColor: 'rgba(188,233,85,0.10)',
   },
-  heroTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
-  greetRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  hello: { fontSize: 12, color: 'rgba(255,255,255,0.6)', fontWeight: '500' },
-  greetName: { fontSize: 15, color: colors.white, fontWeight: '700' },
-  heroIcons: { flexDirection: 'row', gap: 6 },
-  h1: { color: colors.white, fontSize: 24, fontWeight: '700', letterSpacing: -0.5, marginTop: 4 },
+  titleBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+    marginBottom: 18,
+  },
+  brand: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: colors.white,
+    letterSpacing: -0.4,
+  },
+  titleBarActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  avatarBtn: { borderRadius: 9999, overflow: 'hidden' },
+  h1: { color: colors.white, fontSize: 22, fontWeight: '700', letterSpacing: -0.5, marginTop: 0 },
   heroSub: { color: 'rgba(255,255,255,0.65)', fontSize: 13, marginTop: 6 },
   resume: {
     marginTop: 16,

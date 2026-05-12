@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { colors } from '../theme/colors';
+import type { Colors } from '../theme/colors';
+import { useColors, useThemedStyles } from '../theme/useThemedStyles';
 
 interface Props {
   pct: number;
@@ -10,6 +11,8 @@ interface Props {
 }
 
 export function Progress({ pct, onDark, showLabel = true, height = 6 }: Props) {
+  const colors = useColors();
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={styles.row}>
       <View
@@ -26,7 +29,7 @@ export function Progress({ pct, onDark, showLabel = true, height = 6 }: Props) {
             styles.fill,
             {
               width: `${Math.max(0, Math.min(100, pct))}%`,
-              backgroundColor: onDark ? colors.accent : colors.primary,
+              backgroundColor: onDark ? colors.accent : colors.brand,
             },
           ]}
         />
@@ -38,7 +41,7 @@ export function Progress({ pct, onDark, showLabel = true, height = 6 }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   track: { flex: 1, borderRadius: 9999, overflow: 'hidden' },
   fill: { height: '100%', borderRadius: 9999 },

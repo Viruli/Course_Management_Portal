@@ -15,8 +15,10 @@ import { Avatar } from '../../components/Avatar';
 import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
 import { Eyebrow } from '../../components/Eyebrow';
-import { colors } from '../../theme/colors';
+import type { Colors } from '../../theme/colors';
+import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
 import { useUsersStore } from '../../store/usersStore';
+import { toast } from '../../store/uiStore';
 import type { AppRole } from '../../data/types';
 
 interface Props {
@@ -31,8 +33,11 @@ const roleMeta: Record<AppRole, { Icon: any; label: string; desc: string }> = {
 };
 
 export function UserDetailScreen({ route, navigation }: Props) {
+  const colors = useColors();
+  const styles = useThemedStyles(createStyles);
   const { uid } = route.params;
   const user      = useUsersStore((s) => s.users.find((u) => u.uid === uid));
+  const currentSuper = useUsersStore((s) => s.users.find((u) => u.role === 'super'));
   const changeRole = useUsersStore((s) => s.changeRole);
   const approve   = useUsersStore((s) => s.approve);
   const suspend   = useUsersStore((s) => s.suspend);
@@ -73,8 +78,16 @@ export function UserDetailScreen({ route, navigation }: Props) {
 
   const confirmRoleChange = () => {
     if (!confirmRole) return;
+    const willTransfer =
+      confirmRole === 'super' && !!currentSuper && currentSuper.uid !== user.uid;
+    const previousSuperName = currentSuper?.name;
     changeRole(user.uid, confirmRole);
     setConfirmRole(null);
+    if (willTransfer) {
+      toast.success(`${user.name} is now Super Admin. ${previousSuperName} demoted to Admin.`);
+    } else {
+      toast.success(`${user.name} is now ${roleMeta[confirmRole].label}.`);
+    }
   };
 
   return (
@@ -196,6 +209,9 @@ export function UserDetailScreen({ route, navigation }: Props) {
                   const m = roleMeta[r];
                   const Icon = m.Icon;
                   const isCurrent = r === user.role;
+                  // For the Super Admin row, surface that the role is
+                  // exclusive and currently held by someone else.
+                  const isTransfer = r === 'super' && !!currentSuper && currentSuper.uid !== user.uid;
                   return (
                     <Pressable
                       key={r}
@@ -212,6 +228,11 @@ export function UserDetailScreen({ route, navigation }: Props) {
                       <View style={{ flex: 1 }}>
                         <Text style={styles.roleOptionLabel}>{m.label}</Text>
                         <Text style={styles.roleOptionDesc}>{m.desc}</Text>
+                        {isTransfer ? (
+                          <Text style={styles.roleOptionTransfer}>
+                            Currently held by {currentSuper!.name} — promoting transfers ownership.
+                          </Text>
+                        ) : null}
                       </View>
                       {isCurrent ? (
                         <Text style={styles.roleOptionCurrent}>Current</Text>
@@ -245,10 +266,12 @@ export function UserDetailScreen({ route, navigation }: Props) {
               <AlertTriangle size={24} color={colors.warning} />
             </View>
             <Text style={styles.dialogTitle}>
-              {confirmRole === 'admin' && user.role === 'student' ? 'Promote to Admin?' :
-               confirmRole === 'super' ? 'Promote to Super Admin?' :
-               confirmRole === 'student' ? 'Demote to Student?' :
-               'Change role?'}
+              {confirmRole === 'super' && currentSuper && currentSuper.uid !== user.uid
+                ? 'Transfer Super Admin?'
+                : confirmRole === 'admin' && user.role === 'student' ? 'Promote to Admin?'
+                : confirmRole === 'super' ? 'Promote to Super Admin?'
+                : confirmRole === 'student' ? 'Demote to Student?'
+                : 'Change role?'}
             </Text>
             <Text style={styles.dialogBody}>
               {confirmRole && (
@@ -257,7 +280,9 @@ export function UserDetailScreen({ route, navigation }: Props) {
                   <Text style={{ fontWeight: '700' }}>{meta.label}</Text> to{' '}
                   <Text style={{ fontWeight: '700' }}>{roleMeta[confirmRole].label}</Text>.
                   {confirmRole === 'admin' && '\n\nThey will gain access to course authoring and sign-up/enrolment approvals.'}
-                  {confirmRole === 'super' && '\n\nThey will gain full platform oversight including user management.'}
+                  {confirmRole === 'super' && currentSuper && currentSuper.uid !== user.uid
+                    ? `\n\nOnly one Super Admin can exist. ${currentSuper.name} will be demoted to Admin.`
+                    : confirmRole === 'super' ? '\n\nThey will gain full platform oversight including user management.' : ''}
                   {confirmRole === 'student' && '\n\nThey will lose all admin/super admin permissions.'}
                 </>
               )}
@@ -287,6 +312,8 @@ export function UserDetailScreen({ route, navigation }: Props) {
 }
 
 function DetailRow({ Icon, label, value, last }: { Icon: any; label: string; value: string; last?: boolean }) {
+  const colors = useColors();
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={[styles.detailRow, !last && styles.detailRowBorder]}>
       <View style={styles.detailIco}>
@@ -300,7 +327,7 @@ function DetailRow({ Icon, label, value, last }: { Icon: any; label: string; val
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   body: { padding: 16, gap: 14, paddingBottom: 40 },
 
   profile: {
@@ -344,7 +371,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 8,
     paddingVertical: 12, paddingHorizontal: 14,
     borderRadius: 12,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.brand,
   },
   changeRoleText: { flex: 1, fontSize: 13, fontWeight: '700', color: colors.white },
   suggestChip: {
@@ -387,6 +414,10 @@ const styles = StyleSheet.create({
   },
   roleOptionLabel: { fontSize: 14, fontWeight: '700', color: colors.primary },
   roleOptionDesc: { fontSize: 11, color: colors.bodyGreen, marginTop: 2, lineHeight: 14 },
+  roleOptionTransfer: {
+    fontSize: 11, fontWeight: '700', color: colors.warning,
+    marginTop: 6, lineHeight: 14,
+  },
   roleOptionCurrent: {
     fontSize: 10, fontWeight: '700', color: colors.bodyGreen,
     paddingHorizontal: 8, paddingVertical: 3, borderRadius: 9999,

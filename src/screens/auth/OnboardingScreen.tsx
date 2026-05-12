@@ -4,7 +4,8 @@ import { ArrowRight, GraduationCap, TrendingUp, Video, Sparkle } from 'lucide-re
 import { ScreenContainer } from '../../components/ScreenContainer';
 import { Button } from '../../components/Button';
 import { Eyebrow } from '../../components/Eyebrow';
-import { colors } from '../../theme/colors';
+import type { Colors } from '../../theme/colors';
+import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
 
 interface Props {
   onDone: () => void;
@@ -20,6 +21,8 @@ const slides = [
 ];
 
 export function OnboardingScreen({ onDone }: Props) {
+  const colors = useColors();
+  const styles = useThemedStyles(createStyles);
   const [step, setStep] = useState(0);
   const s = slides[step];
   const last = step === slides.length - 1;
@@ -71,7 +74,7 @@ export function OnboardingScreen({ onDone }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   content: { padding: 24, justifyContent: 'space-between' },
   header: { flexDirection: 'row', justifyContent: 'flex-end' },
   skip: { color: 'rgba(255,255,255,0.65)', fontSize: 13, fontWeight: '600', padding: 8 },

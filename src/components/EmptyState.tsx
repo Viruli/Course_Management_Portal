@@ -1,7 +1,8 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import * as Icons from 'lucide-react-native';
-import { colors } from '../theme/colors';
+import type { Colors } from '../theme/colors';
+import { useColors, useThemedStyles } from '../theme/useThemedStyles';
 
 interface Props {
   icon?: string;
@@ -11,6 +12,8 @@ interface Props {
 }
 
 export function EmptyState({ icon = 'Inbox', title, body, action }: Props) {
+  const colors = useColors();
+  const styles = useThemedStyles(createStyles);
   const IconCmp = (Icons as any)[icon] ?? Icons.Inbox;
   return (
     <View style={styles.wrap}>
@@ -24,7 +27,7 @@ export function EmptyState({ icon = 'Inbox', title, body, action }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   wrap: {
     alignItems: 'center',
     justifyContent: 'center',

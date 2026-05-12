@@ -1,7 +1,8 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import * as Icons from 'lucide-react-native';
-import { colors } from '../theme/colors';
+import type { Colors } from '../theme/colors';
+import { useColors, useThemedStyles } from '../theme/useThemedStyles';
 
 interface Props {
   label: string;
@@ -12,13 +13,15 @@ interface Props {
 }
 
 export function Stat({ label, value, icon, dark, delta }: Props) {
+  const colors = useColors();
+  const styles = useThemedStyles(createStyles);
   const IconCmp = (Icons as any)[icon] ?? Icons.Activity;
   return (
     <View
       style={[
         styles.wrap,
         {
-          backgroundColor: dark ? colors.primary : colors.surface,
+          backgroundColor: dark ? colors.brand : colors.surface,
           borderColor: dark ? 'rgba(255,255,255,0.08)' : colors.stroke,
         },
       ]}
@@ -44,7 +47,7 @@ export function Stat({ label, value, icon, dark, delta }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   wrap: {
     flex: 1,
     borderRadius: 14,
