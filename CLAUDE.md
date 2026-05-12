@@ -4,49 +4,55 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-`slp-mobile` — the Expo / React Native mobile frontend for a Course Management Portal. **Currently a design build with no backend connected**: every flow is wired to mock data and Zustand state. The original PRD at `.claude/Blueprint/blueprint_mobile.md` describes a target architecture using Firebase, MMKV, Keychain, TanStack Query, etc. — none of that is wired yet. The codebase intentionally uses Expo-Go-compatible alternatives so the app can be opened on a phone without a custom dev client.
+`slp-mobile` — the Expo / React Native mobile frontend for a Course Management Portal (CMP). The app is a **partially-integrated design build**: the UI and navigation are complete with mock data; backend integration is in progress one feature at a time. The API contract lives in `.claude/Blueprint/blueprint_mobile.md` (architecture) and in the conversation history (API Reference v1.1.0). The app must remain Expo Go-compatible until Firebase / native packages are required.
 
-Reference design lives in `src/CMP/` — that's the original web prototype (plain HTML + React via CDN). It is not part of the RN bundle; treat it as a styling reference.
+Reference design lives in `src/CMP/` — the original web prototype (plain HTML + React via CDN). Not bundled; treat as a styling reference only.
+
+## Environment setup
+
+Copy `.env.example` to `.env` and fill in your local values before starting. Metro will not expose `EXPO_PUBLIC_*` vars unless they are in `.env` at the project root.
+
+```bash
+cp .env.example .env
+# Edit .env — set EXPO_PUBLIC_API_BASE_URL to http://<your-machine-ip>:3000/api/v1
+```
 
 ## Common commands
 
-The dev server is usually already running on `http://localhost:8081`. All commands assume the project root.
-
 ```bash
-# Start Expo dev server (most useful flags)
-npx expo start --lan         # same Wi-Fi as phone
-npx expo start --tunnel      # different networks (ngrok)
-npx expo start --clear       # add when Metro cache seems stale
+# Start Expo dev server
+npx expo start --lan          # same Wi-Fi as phone
+npx expo start --tunnel       # different networks (ngrok)
+npx expo start --clear        # add when Metro cache seems stale
 
-# TypeScript check (no test suite exists yet)
+# TypeScript check — only quality gate (no Jest/lint scripts exist)
 npx tsc --noEmit
 
 # Force-bundle to surface Metro errors without scanning QR
-# (returns 200 + bytes on success; throws with the error JS on failure)
 curl "http://localhost:8081/index.bundle?platform=android&dev=true&minify=false"
 
 # Reload all connected devices
 curl -X POST http://localhost:8081/reload
 
-# Verify dep versions match the Expo SDK
-npx expo install --check     # report
-npx expo install --fix       # auto-pin
+# Verify pinned dep versions match the Expo SDK
+npx expo install --check
+npx expo install --fix
 ```
-
-There are no Jest/Detox configs and no `lint` script. `npx tsc --noEmit` is the only quality gate.
 
 ## High-level architecture
 
 ### Role-based routing
 
-`src/store/appStore.ts` holds a single `role` value (`'public' | 'student' | 'admin' | 'super'`). `RootNavigator` switches the entire navigator tree based on it:
+`src/store/appStore.ts` holds a single `role` (`'public' | 'student' | 'admin' | 'super'`). `RootNavigator` switches the entire navigator tree:
 
 - `'public'` → `AuthFlow` (Splash / Onboarding / SignIn / SignUp / Pending)
 - `'student'` → `StudentTabs`
 - `'admin'` → `AdminTabs`
 - `'super'` → `SuperAdminTabs`
 
-Login is a mock: `AuthFlow` looks up the entered email in `SAMPLE_USERS` (from `data/mock.ts`) and calls `setRole(user.role)`. Demo accounts:
+**Naming discrepancy to be aware of:** the API returns `role: 'super_admin'` but the app uses `'super'`. This mapping needs to happen when wiring `GET /me`.
+
+Sign-in is still partially mocked: `AuthFlow` calls `registerStudent()` (real API) for registration, but sign-in still resolves role from `SAMPLE_USERS` in `data/mock.ts`. Demo accounts:
 
 | Role | Email |
 |---|---|
@@ -54,42 +60,89 @@ Login is a mock: `AuthFlow` looks up the entered email in `SAMPLE_USERS` (from `
 | Admin | `sahan.w@edupath.lk` |
 | Super Admin | `dilani.r@edupath.lk` |
 
-Super Admin tabs (Home / Approvals / Users / Courses / More) are a superset of Admin tabs and reuse most Admin screens directly.
+### API service layer
+
+All backend calls go through `src/services/`:
+
+- `api.ts` — `apiFetch<T>(path, options)` base client. Reads `EXPO_PUBLIC_API_BASE_URL`, attaches auth headers, handles timeouts, and normalises every error into a typed `ApiError`. Returns `ApiResult<T>` `{ data, status, requestId, url, durationMs }`.
+- `auth.ts` — `registerStudent(payload)` — the only wired endpoint so far.
+
+**Adding a new service call:**
+```ts
+import { apiFetch } from './api';
+
+export function getMyProfile(token: string) {
+  return apiFetch<UserProfile>('/me', {
+    method: 'GET',
+    token,
+    tag: 'profile.getMe',          // appears in DebugPanel
+    redactFields: [],
+  });
+}
+```
+
+**Error handling pattern in screens:**
+```ts
+import { ApiError } from '../../services/api';
+
+try {
+  const result = await someServiceCall();
+  // result.data is the typed response
+} catch (err) {
+  if (err instanceof ApiError) {
+    if (err.code === 'SPECIFIC_CODE') { /* handle */ }
+    else toast.error(err.message);
+  } else {
+    toast.error('Something went wrong.');
+  }
+}
+```
+
+`ApiError` carries `.code` (machine-readable, matches the API error codes reference), `.status` (HTTP), `.details` (field-level validation errors from 400 responses), and `.requestId`.
+
+### Debug infrastructure
+
+`src/store/debugStore.ts` — in-memory log (max 50 entries) of every `apiFetch` call. Auto-populated when a `tag` is passed to `apiFetch`. Use the `debug` helper for non-hook contexts.
+
+`src/components/DebugPanel.tsx` — drop into any screen during development:
+```tsx
+<DebugPanel tags={['auth.register']} title="Sign up debug" />
+```
+Renders expandable request/response cards including body, status, duration, and error. Hidden automatically when `debugStore.enabled` is false or the tag has no entries.
 
 ### State (Zustand stores)
 
-All state is in `src/store/`. Each store is plain Zustand, no persistence:
+All in `src/store/`. No persistence layer yet.
 
 - `appStore` — current role
-- `profileStore` — per-role profile (firstName/lastName/email/photoUri/etc.)
-- `usersStore` — full user roster seeded from `SAMPLE_USERS`; Super Admin role-change and approve/suspend mutate this
+- `profileStore` — per-role profile (firstName/lastName/email/photoUri)
+- `usersStore` — full user roster seeded from `SAMPLE_USERS`; mutated by approve/suspend actions
 - `approvalsStore` — registration + enrolment queues; approve/reject mutates here
 - `notificationsStore` — keyed by audience (`'student'` / `'admin'`), with read-state
-- `courseBuilderStore` — the course being created/edited; shared between `CourseBuilderScreen` and `LessonEditorScreen` so the Lesson editor screen can read/mutate the parent course
-- `themeStore` — user theme preference (`light | dark | system`) + the resolved OS scheme
-- `uiStore` — toast queue. Use the helper `toast.success(msg) / toast.info(msg) / toast.error(msg)` from anywhere
+- `courseBuilderStore` — in-progress course; shared between `CourseBuilderScreen` and `LessonEditorScreen`
+- `themeStore` — user theme preference (`light | dark | system`) + resolved OS scheme
+- `uiStore` — toast queue. Use `toast.success(msg) / toast.info(msg) / toast.error(msg)` from anywhere
+- `debugStore` — API call log; not user-facing, dev tooling only
 
-The `ToastHost` is mounted once at the top of `App.tsx`.
+`ToastHost` is mounted once at the root in `App.tsx`.
 
 ### Theming
 
-`src/theme/colors.ts` exports `lightColors` and `darkColors`. Same key set, different values.
+`src/theme/colors.ts` exports `lightColors` and `darkColors`. **Critical token rules:**
 
-**Critical token convention:**
-- `colors.brand` (#152A24) is **constant** in both modes. Use this for brand backgrounds — heroes, primary buttons, "dark" avatar variant, active bottom-nav pills.
-- `colors.primary` is **adaptive**. In light mode it equals `brand`; in dark mode it's `#EEF2EE`. Use it for **text and icons** so contrast flips with the surface.
-- `surface`, `pageBg`, `surface2`, `lightGray`, `stroke`, `stroke2`, `bodyGreen`, `muted`, all the `*Bg` (success/warning/error/info) tokens — adapt.
-- `accent` (lime), semantic hues (success/warning/error), and `white` are constant in both modes.
+- `colors.brand` (#152A24) — **constant** in both modes. Use for brand backgrounds, primary buttons, active nav pills.
+- `colors.primary` — **adaptive**. Light mode = brand; dark mode = #EEF2EE. Use for text and icons so contrast flips with the surface.
+- `surface`, `pageBg`, `surface2`, `lightGray`, `stroke`, `stroke2`, `bodyGreen`, `muted`, `*Bg` tokens — all adaptive.
+- `accent` (lime), semantic colours (success/warning/error), `white` — constant.
 
-**StyleSheet usage rule:** `StyleSheet.create({…})` runs at module load and captures values once, so module-level styles can't theme themselves. Every component in this codebase uses the `useThemedStyles` pattern:
-
+**`useThemedStyles` pattern — required for all components:**
 ```tsx
 import type { Colors } from '../theme/colors';
 import { useColors, useThemedStyles } from '../theme/useThemedStyles';
 
 export function MyScreen() {
-  const colors = useColors();                     // for inline JSX color references
-  const styles = useThemedStyles(createStyles);   // memo-cached StyleSheet
+  const colors = useColors();
+  const styles = useThemedStyles(createStyles);
   return <View style={styles.wrap}>…</View>;
 }
 
@@ -97,38 +150,41 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   wrap: { backgroundColor: colors.surface, padding: 16 },
 });
 ```
-
-When adding a new component, follow this pattern. Don't import `colors` at module scope — that import always returns the light palette and won't react to theme changes.
+Never import colours at module scope — `StyleSheet.create` runs once at load and won't react to theme changes.
 
 ### Course Builder hierarchy
 
-The course authoring flow is the most complex sub-feature. Hierarchy: **Course → Semester → Subject → Lesson → Attachments**. `courseBuilderStore` holds the in-progress course; `CourseBuilderScreen` renders nested accordions; tapping a lesson row navigates to `LessonEditorScreen` which reads and mutates that lesson via the same store. The `SAMPLE_BUILDER_COURSE` constant in `data/mock.ts` is loaded into the store when "Edit" is invoked on any published course (since the design build doesn't persist real per-course content).
+The most complex sub-feature. Frontend hierarchy: **Course → Semester → Subject → Lesson → Attachments**. `courseBuilderStore` holds the in-progress course; `CourseBuilderScreen` renders nested accordions; tapping a lesson navigates to `LessonEditorScreen`. `SAMPLE_BUILDER_COURSE` in `data/mock.ts` is loaded when "Edit" is tapped on any published course.
 
-### Course view vs builder
-
-Tapping a published course card opens `CourseViewScreen` (read-only) with a 3-dot menu → Edit (→ builder) / Delete (confirmation dialog → local hide). Drafts on the Courses tab go directly to their `Continue` / `Publish` buttons — they do not pass through `CourseViewScreen`.
+**API hierarchy (v1.1.0):** Course → Semester → Subject (with `youtubeVideoId`) → Lesson (separate entity, §6.4–6.7) → Attachments. The frontend's extra Lesson layer is pending reconciliation with the backend team.
 
 ### Expo Go constraints
 
-The project targets **Expo Go SDK 54**. Pinned versions matter — `npx expo install --check` should always pass. Notable substitutions away from the blueprint:
+Targets **Expo Go SDK 54**. Do not add packages that require a custom dev client without explicitly switching the project:
 
-- No `react-native-mmkv` / `react-native-keychain` / `@react-native-firebase/*` / `@notifee/react-native` / `react-native-fs` — these need a custom dev client. The blueprint references them, but **don't add them back without switching the project away from Expo Go**.
-- `expo-image-picker` is used for the profile-photo flow. It needs `mediaTypes: ['images']` (array form) on SDK 54+ — string mode-types are deprecated.
-- `lucide-react-native@1.x` dropped a handful of icons (notably `Youtube`). Use `TvMinimalPlay` etc. as replacements.
-- React Navigation v7's theme requires a `fonts` block in addition to `colors` — see `RootNavigator.tsx`.
-- Reanimated 4 babel plugin is `react-native-worklets/plugin` (not `react-native-reanimated/plugin`). Already set in `babel.config.js`.
+- No `react-native-mmkv` / `react-native-keychain` / `@react-native-firebase/*` / `@notifee/react-native` / `react-native-fs`
+- `expo-image-picker` — use `mediaTypes: ['images']` (array, not string) on SDK 54+
+- `lucide-react-native@1.x` — `Youtube` icon removed; use `TvMinimalPlay` instead
+- React Navigation v7 theme requires a `fonts` block alongside `colors` — see `RootNavigator.tsx`
+- Reanimated 4 babel plugin is `react-native-worklets/plugin` — already in `babel.config.js`
 
-### Files and folders
+## .claude/ workflow
 
-- `App.tsx` — root. Mounts gesture root, safe-area, root navigator, toast host, and the Appearance listener that syncs OS color scheme into `themeStore`.
-- `index.ts` — `registerRootComponent(App)`. Required by SDK 53+; no `node_modules/expo/AppEntry.js`.
-- `src/CMP/` — original web prototype (HTML + JSX via CDN). Read-only reference, not bundled.
-- `src/data/mock.ts` — every list, user, course, etc. seeded into stores at startup.
-- `src/data/types.ts` — TS interfaces for everything mock data touches.
-- `assets/fonts/` — currently empty. `FONTS_SETUP.md` documents the Figtree + Inter setup that hasn't been done yet; system font is used in the meantime.
+Four slash commands automate the feature-integration workflow. Run them in order for each new feature:
+
+| Command | What it does |
+|---|---|
+| `/feature-spec <paragraph>` | Parses description → creates `feat/<slug>` branch → writes `.claude/_specs/NNN-<slug>.md` |
+| `/create-plan <slug>` | Saves Claude's in-chat implementation plan to `.claude/_plan/YYYY-MM-DD-<slug>.md` |
+| `/create-sprints <slug>` | Explodes the plan into per-phase sprint files under `.claude/_sprints/<slug>/` |
+| `/run-sprint [<arg>]` | Walks through a sprint task-by-task, runs `npx tsc --noEmit`, prompts manual Expo Go test, marks complete |
+
+Specs, plans, and sprints are committed on the feature branch. They serve as living documentation for the integration work.
 
 ## Working notes
 
-- Many buttons that aren't tied to real state call `toast.info('… coming soon.')` to provide feedback without misleading the user. When wiring a new button, prefer real state changes; fall back to a `toast` only when the destination doesn't exist yet.
-- Pending registration and enrolment counts on tab badges, dashboard cards, and queue tabs are **all derived from `approvalsStore`** — they update instantly when you approve / reject. Don't hard-code counts.
-- The lime role-switcher pill that used to be in `RootNavigator` has been removed; role changes only via login. The OS theme follow-along still works via `themeStore.systemScheme`.
+- `src/data/types.ts` contains **mock-era types** that do not match the API v1.1.0 contract. When wiring a new endpoint, define API-aligned interfaces in the service file; do not reuse these mock types for API responses.
+- Buttons not yet wired to real state call `toast.info('… coming soon.')`. When wiring a new button, prefer real state changes; fall back to `toast` only when the destination screen doesn't exist yet.
+- Pending registration and enrolment counts on tab badges, dashboard cards, and queue tabs are all derived from `approvalsStore` — they update instantly. Never hard-code counts.
+- `EditProfileScreen` is shared between student and admin flows — lives in `src/screens/shared/`.
+- The OS theme listener is mounted in `App.tsx` and syncs the device colour scheme into `themeStore.systemScheme`.
