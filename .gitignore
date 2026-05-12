@@ -11,7 +11,7 @@ expo-env.d.ts
 
 # IDE / local config
 .vscode/
-.claude/
+.claude/settings.local.json
 .cursor/
 
 # Xcode
@@ -71,6 +71,7 @@ yarn-error.log
 *.mobileprovision
 
 # Environment files
+.env
 .env.local
 .env.*.local
 
