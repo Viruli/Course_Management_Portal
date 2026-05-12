@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-`slp-mobile` — the Expo / React Native mobile frontend for a Course Management Portal. **Currently a design build with no backend connected**: every flow is wired to mock data and Zustand state. The original PRD at `blueprint_mobile.md` describes a target architecture using Firebase, MMKV, Keychain, TanStack Query, etc. — none of that is wired yet. The codebase intentionally uses Expo-Go-compatible alternatives so the app can be opened on a phone without a custom dev client.
+`slp-mobile` — the Expo / React Native mobile frontend for a Course Management Portal. **Currently a design build with no backend connected**: every flow is wired to mock data and Zustand state. The original PRD at `.claude/Blueprint/blueprint_mobile.md` describes a target architecture using Firebase, MMKV, Keychain, TanStack Query, etc. — none of that is wired yet. The codebase intentionally uses Expo-Go-compatible alternatives so the app can be opened on a phone without a custom dev client.
 
 Reference design lives in `src/CMP/` — that's the original web prototype (plain HTML + React via CDN). It is not part of the RN bundle; treat it as a styling reference.
 
