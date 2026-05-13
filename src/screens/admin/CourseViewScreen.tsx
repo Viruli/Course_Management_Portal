@@ -1,13 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator, Modal, Pressable, ScrollView,
+  ActivityIndicator, Image, Modal, Pressable, ScrollView,
   StyleSheet, Text, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ArrowLeft, MoreVertical, Pencil, Trash2, AlertTriangle,
   ChevronDown, ChevronUp, GraduationCap, BookOpen,
-  Layers, Users,
+  Layers, Users, PlayCircle, FileText,
 } from 'lucide-react-native';
 import { ScreenContainer } from '../../components/ScreenContainer';
 import { AppBar } from '../../components/AppBar';
@@ -17,7 +17,12 @@ import { Avatar } from '../../components/Avatar';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { DebugPanel } from '../../components/DebugPanel';
-import { getCourseById, ApiCourseDetail, ApiSemesterDetail } from '../../services/courses';
+import { getCourseById, ApiCourseDetail } from '../../services/courses';
+import { ApiSemester } from '../../services/semesters';
+import { listSubjects, ApiSubject, listLessons, ApiLesson } from '../../services/subjects';
+
+interface SubjectWithLessons  extends ApiSubject  { lessons: ApiLesson[]; }
+interface SemesterWithSubjects extends ApiSemester { subjects: SubjectWithLessons[]; }
 import { toast } from '../../store/uiStore';
 import type { Colors } from '../../theme/colors';
 import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
@@ -35,6 +40,7 @@ export function CourseViewScreen({ courseId, onBack, onEdit }: Props) {
   const styles = useThemedStyles(createStyles);
 
   const [detail,        setDetail]        = useState<ApiCourseDetail | null>(null);
+  const [semesters,     setSemesters]     = useState<SemesterWithSubjects[]>([]);
   const [loading,       setLoading]       = useState(true);
   const [menuOpen,      setMenuOpen]      = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -42,16 +48,62 @@ export function CourseViewScreen({ courseId, onBack, onEdit }: Props) {
   useEffect(() => {
     if (!courseId) { setLoading(false); return; }
     setLoading(true);
-    getCourseById(courseId)
-      .then((r) => setDetail(r.data))
+
+    const load = async () => {
+      // 1. Course metadata + nested semester/subject tree
+      const courseRes = await getCourseById(courseId);
+      setDetail(courseRes.data);
+
+      // 2. Semesters — use nested array from GET /courses/:id
+      const semList: any[] = Array.isArray(courseRes.data.semesters)
+        ? courseRes.data.semesters : [];
+
+      // 3. For each semester, get subjects (nested or via GET /semesters/:id/subjects)
+      //    Then for each subject, fetch lessons via GET /subjects/:id/lessons
+      const withAll: SemesterWithSubjects[] = await Promise.all(
+        semList.map(async (sem) => {
+          // Get subjects
+          let subjects: ApiSubject[] = Array.isArray(sem.subjects) ? sem.subjects : [];
+          if (subjects.length === 0 && (sem.subjectCount ?? 0) > 0) {
+            try {
+              const subRes = await listSubjects(sem.id);
+              subjects = subRes.data ?? [];
+            } catch { subjects = []; }
+          }
+
+          // Get lessons for each subject
+          const subjectsWithLessons: SubjectWithLessons[] = await Promise.all(
+            subjects.map(async (sub) => {
+              try {
+                const lesRes = await listLessons(sub.id);
+                return { ...sub, lessons: lesRes.data ?? [] };
+              } catch {
+                return { ...sub, lessons: [] };
+              }
+            }),
+          );
+
+          return { ...sem, subjects: subjectsWithLessons };
+        }),
+      );
+
+      setSemesters(withAll);
+    };
+
+    load()
       .catch(() => toast.error('Failed to load course.'))
       .finally(() => setLoading(false));
   }, [courseId]);
 
-  const semesters: ApiSemesterDetail[] = detail?.semesters ?? [];
-
   const subjectCount = useMemo(
     () => semesters.reduce((n, sem) => n + (sem.subjects?.length ?? 0), 0),
+    [semesters],
+  );
+  const lessonCount = useMemo(
+    () => semesters.reduce(
+      (n, sem) => n + (sem.subjects ?? []).reduce((m, sub) => m + ((sub as SubjectWithLessons).lessons?.length ?? 0), 0),
+      0,
+    ),
     [semesters],
   );
 
@@ -88,7 +140,15 @@ export function CourseViewScreen({ courseId, onBack, onEdit }: Props) {
       ) : (
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>
           <View style={styles.coverWrap}>
-            <CourseCover kind="cs" emblem={resolvedTitle.slice(0, 2).toUpperCase()} tag="" height={180} />
+            {detail?.coverImageUrl ? (
+              <Image
+                source={{ uri: detail.coverImageUrl }}
+                style={styles.coverImage}
+                resizeMode="cover"
+              />
+            ) : (
+              <CourseCover kind="cs" emblem={resolvedTitle.slice(0, 2).toUpperCase()} tag="" height={180} />
+            )}
           </View>
 
           <View style={styles.head}>
@@ -105,9 +165,10 @@ export function CourseViewScreen({ courseId, onBack, onEdit }: Props) {
 
           {/* Stats */}
           <View style={styles.statsRow}>
-            <StatTile Icon={Layers} label="Semesters" value={String(detail?.semesterCount ?? semesters.length)} />
+            <StatTile Icon={Layers}   label="Semesters" value={String(detail?.semesterCount ?? semesters.length)} />
             <StatTile Icon={BookOpen} label="Subjects"  value={String(subjectCount)} />
-            <StatTile Icon={Users}  label="Created by" value={detail?.createdByName ?? '—'} wide />
+            <StatTile Icon={PlayCircle} label="Lessons"   value={String(lessonCount)} />
+            <StatTile Icon={Users}    label="Created by" value={detail?.createdByName ?? '—'} wide />
           </View>
 
           {/* Instructor / creator */}
@@ -136,7 +197,7 @@ export function CourseViewScreen({ courseId, onBack, onEdit }: Props) {
             )}
           </View>
 
-          <DebugPanel tags={['courses.getById']} title="View debug" />
+          <DebugPanel tags={['courses.getById', 'subjects.list', 'lessons.list']} title="View debug" />
         </ScrollView>
       )}
 
@@ -230,7 +291,7 @@ function StatTile({ Icon, label, value, wide }: { Icon: any; label: string; valu
   );
 }
 
-function CurriculumTree({ semesters }: { semesters: ApiSemesterDetail[] }) {
+function CurriculumTree({ semesters }: { semesters: SemesterWithSubjects[] }) {
   const colors = useColors();
   const styles = useThemedStyles(createStyles);
   const [open, setOpen] = useState<Record<string, boolean>>(() => {
@@ -263,27 +324,46 @@ function CurriculumTree({ semesters }: { semesters: ApiSemesterDetail[] }) {
                 : <ChevronDown size={18} color={colors.white} />}
             </Pressable>
 
-            {isOpen && (sem.subjects ?? []).length > 0 && (
+            {isOpen && (
               <View style={styles.curSemBody}>
-                {(sem.subjects ?? []).map((sub) => (
-                  <View key={sub.id} style={styles.curSubject}>
-                    <View style={styles.curSubjectHead}>
-                      <View style={styles.curSubjectIco}>
-                        <BookOpen size={13} color={colors.primary} />
+                {(sem.subjects ?? []).length === 0 ? (
+                  <Text style={styles.empty}>No subjects yet.</Text>
+                ) : (
+                  (sem.subjects as SubjectWithLessons[]).map((sub) => (
+                    <View key={sub.id} style={styles.curSubject}>
+                      <View style={styles.curSubjectHead}>
+                        <View style={styles.curSubjectIco}>
+                          <BookOpen size={13} color={colors.primary} />
+                        </View>
+                        <Text style={styles.curSubjectTitle} numberOfLines={2}>{sub.title}</Text>
+                        <Text style={styles.curSubjectCount}>
+                          {(sub.lessons ?? []).length} lesson{(sub.lessons ?? []).length === 1 ? '' : 's'}
+                        </Text>
                       </View>
-                      <Text style={styles.curSubjectTitle} numberOfLines={2}>{sub.title}</Text>
+                      {sub.description ? (
+                        <Text style={styles.curSubjectDesc} numberOfLines={2}>{sub.description}</Text>
+                      ) : null}
+                      {(sub.lessons ?? []).map((lesson, i) => (
+                        <View key={lesson.id} style={styles.curLesson}>
+                          <View style={styles.curLessonIco}>
+                            <Text style={styles.curLessonNum}>{i + 1}</Text>
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.curLessonTitle} numberOfLines={1}>
+                              {lesson.title || 'Untitled lesson'}
+                            </Text>
+                            {lesson.url ? (
+                              <View style={styles.curLessonMeta}>
+                                <PlayCircle size={10} color={colors.error} />
+                                <Text style={styles.metaChipText}>Video</Text>
+                              </View>
+                            ) : null}
+                          </View>
+                        </View>
+                      ))}
                     </View>
-                    {sub.description ? (
-                      <Text style={styles.curSubjectDesc} numberOfLines={2}>{sub.description}</Text>
-                    ) : null}
-                  </View>
-                ))}
-              </View>
-            )}
-
-            {isOpen && (sem.subjects ?? []).length === 0 && (
-              <View style={styles.curSemBody}>
-                <Text style={styles.empty}>No subjects yet.</Text>
+                  ))
+                )}
               </View>
             )}
           </View>
@@ -294,7 +374,8 @@ function CurriculumTree({ semesters }: { semesters: ApiSemesterDetail[] }) {
 }
 
 const createStyles = (colors: Colors) => StyleSheet.create({
-  coverWrap: { paddingHorizontal: 16, paddingTop: 4 },
+  coverWrap:   { paddingHorizontal: 16, paddingTop: 4 },
+  coverImage:  { width: '100%', height: 180, borderRadius: 16 },
   head: { paddingHorizontal: 16, paddingTop: 14, gap: 6 },
   badgeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   title: { fontSize: 22, fontWeight: '700', color: colors.primary, letterSpacing: -0.4, lineHeight: 26, marginTop: 2 },
@@ -356,7 +437,27 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     flexShrink: 0,
   },
   curSubjectTitle: { flex: 1, fontSize: 13, fontWeight: '700', color: colors.primary },
-  curSubjectDesc:  { fontSize: 11, color: colors.bodyGreen, lineHeight: 15, paddingLeft: 32 },
+  curSubjectCount: {
+    fontSize: 10, fontWeight: '700', color: colors.primary,
+    paddingHorizontal: 7, paddingVertical: 2,
+    backgroundColor: colors.lightGray, borderRadius: 9999,
+  },
+  curSubjectDesc: { fontSize: 11, color: colors.bodyGreen, lineHeight: 15, paddingLeft: 32 },
+
+  curLesson: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingVertical: 7, paddingHorizontal: 4,
+    borderTopColor: colors.stroke2, borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  curLessonIco: {
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: colors.lightGray,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  curLessonNum:   { fontSize: 10, fontWeight: '700', color: colors.primary },
+  curLessonTitle: { fontSize: 12, fontWeight: '600', color: colors.primary, flex: 1 },
+  curLessonMeta:  { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
+  metaChipText:   { fontSize: 10, color: colors.bodyGreen },
 
   menuBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   menuPanel: {

@@ -29,6 +29,13 @@ export interface ApiLesson {
 
 // ─── Subject CRUD ─────────────────────────────────────────────────────────────
 
+export function listSubjects(semesterId: string): Promise<ApiResult<ApiSubject[]>> {
+  return apiFetch<ApiSubject[]>(`/semesters/${semesterId}/subjects`, {
+    method: 'GET',
+    tag:    'subjects.list',
+  });
+}
+
 export function createSubject(
   semesterId: string,
   payload: {

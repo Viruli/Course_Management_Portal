@@ -89,10 +89,10 @@ export function CourseBuilderScreen({ navigation }: Props) {
     setSemSaving(true); setSemError('');
     try {
       const result = await createSemester(courseId!, {
-        title: semTitle.trim(),
+        name: semTitle.trim(),
         sortOrder: course.semesters.length + 1,
       });
-      addSemester(result.data.id, result.data.title ?? result.data.name ?? semTitle.trim());
+      addSemester(result.data.id, result.data.name ?? semTitle.trim());
       setExpanded((p) => ({ ...p, [result.data.id]: true }));
       setSemModal(false);
     } catch (err) {
@@ -103,7 +103,7 @@ export function CourseBuilderScreen({ navigation }: Props) {
 
   const onRenameSemester = (semesterId: string, name: string) => {
     renameSemester(semesterId, name);
-    updateSemester(semesterId, { title: name }).catch(() => {});
+    updateSemester(semesterId, { name }).catch(() => {});
   };
 
   const onRemoveSemester = async (semesterId: string) => {

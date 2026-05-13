@@ -11,9 +11,16 @@ export interface ApiSemester {
   updatedAt:    string;
 }
 
+export function listSemesters(courseId: string): Promise<ApiResult<ApiSemester[]>> {
+  return apiFetch<ApiSemester[]>(`/courses/${courseId}/semesters`, {
+    method: 'GET',
+    tag:    'semesters.list',
+  });
+}
+
 export function createSemester(
   courseId: string,
-  payload: { title: string; sortOrder: number },
+  payload: { name: string; sortOrder: number },
 ): Promise<ApiResult<ApiSemester>> {
   return apiFetch<ApiSemester>(`/courses/${courseId}/semesters`, {
     method: 'POST',
@@ -24,7 +31,7 @@ export function createSemester(
 
 export function updateSemester(
   id: string,
-  patch: { title?: string; sortOrder?: number },
+  patch: { name?: string; sortOrder?: number },
 ): Promise<ApiResult<ApiSemester>> {
   return apiFetch<ApiSemester>(`/semesters/${id}`, {
     method: 'PATCH',
