@@ -63,11 +63,9 @@ export async function trackLoginFailure(email: string): Promise<TrackFailureResp
       body: { email },
       tag: 'auth.trackFailure',
     });
-    console.log('[DEBUG] trackLoginFailure success:', result.data);
     return result.data;
-  } catch (err: any) {
-    // DEBUG: log why the call failed so we can see it in Metro terminal
-    console.warn('[DEBUG] trackLoginFailure failed (silently):', err?.code, err?.message, err?.status);
+  } catch {
+    // Never let a failure-tracking error surface to the user.
     return { locked: false, attempts: 0 };
   }
 }

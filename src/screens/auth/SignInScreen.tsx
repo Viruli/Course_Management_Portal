@@ -13,7 +13,6 @@ import { ApiError } from '../../services/api';
 import { useAppStore } from '../../store/appStore';
 import { useProfileStore } from '../../store/profileStore';
 import { toast } from '../../store/uiStore';
-import { DebugPanel } from '../../components/DebugPanel';
 
 interface Props {
   onSubmit: () => void;
@@ -163,9 +162,6 @@ export function SignInScreen({ onSubmit, onSwitchToSignUp, onBack }: Props) {
               <Text style={styles.switchLink}>Create account</Text>
             </Pressable>
           </View>
-          {/* ── DEBUG — remove before shipping ── */}
-          <DebugPanel tags={['auth.getMe', 'auth.trackFailure']} title="Sign-in debug" />
-          {/* ── END DEBUG ── */}
         </View>
       </View>
     </ScreenContainer>
