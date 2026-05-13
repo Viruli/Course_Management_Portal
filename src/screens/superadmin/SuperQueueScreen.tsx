@@ -25,7 +25,7 @@ export function SuperQueueScreen() {
 
   const [tab, setTab] = useState<'reg' | 'enr'>('reg');
 
-  const pendingReg = useMemo(() => registrations.filter((r) => r.status === 'pending'), [registrations]);
+  const pendingReg = useMemo(() => registrations.filter((r) => r.state === 'pending'), [registrations]);
   const pendingEnr = useMemo(() => enrolments.filter((e) => e.state === 'pending'), [enrolments]);
 
   return (

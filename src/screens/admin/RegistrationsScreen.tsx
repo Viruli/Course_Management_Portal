@@ -11,6 +11,7 @@ import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
 import { SearchField } from '../../components/SearchField';
 import { RejectReasonModal } from '../../components/RejectReasonModal';
+import { DebugPanel } from '../../components/DebugPanel';
 import { useApprovalsStore } from '../../store/approvalsStore';
 import { toast } from '../../store/uiStore';
 import type { Colors } from '../../theme/colors';
@@ -40,15 +41,15 @@ export function RegistrationsScreen() {
   }, [filter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const counts = useMemo(() => ({
-    pending:  registrations.filter((r) => r.status === 'pending').length,
-    approved: registrations.filter((r) => r.status === 'approved').length,
-    rejected: registrations.filter((r) => r.status === 'rejected').length,
+    pending:  registrations.filter((r) => r.state === 'pending').length,
+    approved: registrations.filter((r) => r.state === 'approved').length,
+    rejected: registrations.filter((r) => r.state === 'rejected').length,
   }), [registrations]);
 
   const list = useMemo(() => {
     const ql = q.trim().toLowerCase();
     return registrations
-      .filter((r) => r.status === filter)
+      .filter((r) => r.state === filter)
       .filter((r) => !ql || `${r.firstName} ${r.lastName}`.toLowerCase().includes(ql) || r.email.toLowerCase().includes(ql));
   }, [registrations, filter, q]);
 
@@ -152,11 +153,11 @@ export function RegistrationsScreen() {
                       <Text style={styles.email}>{r.email}</Text>
                       <Text style={styles.when}>Submitted {new Date(r.submittedAt).toLocaleDateString()}</Text>
                     </View>
-                    {r.status === 'pending'  && <Badge tone="warning" icon={<Clock size={11} color={colors.warning} />}>Pending</Badge>}
-                    {r.status === 'approved' && <Badge tone="success">Approved</Badge>}
-                    {r.status === 'rejected' && <Badge tone="error">Rejected</Badge>}
+                    {r.state === 'pending'  && <Badge tone="warning" icon={<Clock size={11} color={colors.warning} />}>Pending</Badge>}
+                    {r.state === 'approved' && <Badge tone="success">Approved</Badge>}
+                    {r.state === 'rejected' && <Badge tone="error">Rejected</Badge>}
                   </View>
-                  {r.status === 'pending' && (
+                  {r.state === 'pending' && (
                     <View style={styles.actions}>
                       <View style={{ flex: 1 }}>
                         <Button
@@ -193,6 +194,9 @@ export function RegistrationsScreen() {
         onConfirm={handleRejectConfirm}
         onCancel={() => setRejectTarget(null)}
       />
+
+      {/* DEBUG — remove before PR */}
+      <DebugPanel tags={['registrations.list', 'registrations.approve', 'registrations.reject']} title="Registrations debug" />
     </ScreenContainer>
   );
 }

@@ -42,7 +42,7 @@ function BottomNav({ active, onChange }: { active: TabId; onChange: (id: TabId) 
   const colors = useColors();
   const styles = useThemedStyles(createStyles);
   const pendingApprovals = useApprovalsStore((s) =>
-    s.registrations.filter((r) => r.status === 'pending').length +
+    s.registrations.filter((r) => r.state === 'pending').length +
     s.enrolments.filter((e) => e.state === 'pending').length
   );
   const badgeFor = (id: TabId) => (id === 'approvals' ? pendingApprovals : 0);

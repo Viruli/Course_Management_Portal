@@ -83,7 +83,7 @@ export const useApprovalsStore = create<State>((set, get) => ({
 
   bulkApproveAllRegistrations: async () => {
     const ids = get().registrations
-      .filter((r) => r.status === 'pending')
+      .filter((r) => r.state === 'pending')
       .map((r) => r.id);
 
     if (ids.length === 0) return { approved: 0, failed: 0 };

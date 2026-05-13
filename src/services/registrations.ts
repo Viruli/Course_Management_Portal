@@ -6,7 +6,7 @@ export interface ApiRegistration {
   firstName:   string;
   lastName:    string;
   email:       string;
-  status:      'pending' | 'approved' | 'rejected';
+  state:       'pending' | 'approved' | 'rejected';   // backend returns 'state' not 'status'
   submittedAt: string;
 }
 
