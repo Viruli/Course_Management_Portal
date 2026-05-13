@@ -22,13 +22,13 @@ import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
 import type { Course, BuilderSemester, BuilderLesson } from '../../data/types';
 
 interface Props {
-  course: Course;
+  courseId?: string;  // real API course ID â€” when provided, fetch real data
+  course?: Course;    // legacy mock path
   onBack: () => void;
-  onEdit: () => void;
-  // Delete is a no-op in the design build â€” we just confirm + toast.
+  onEdit: (courseId: string) => void;
 }
 
-export function CourseViewScreen({ course, onBack, onEdit }: Props) {
+export function CourseViewScreen({ courseId, course, onBack, onEdit }: Props) {
   const colors = useColors();
   const styles = useThemedStyles(createStyles);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -41,9 +41,12 @@ export function CourseViewScreen({ course, onBack, onEdit }: Props) {
     [curriculum],
   );
 
+  const resolvedId    = courseId ?? course?.id ?? '';
+  const resolvedTitle = course?.title ?? 'Course';
+
   const handleEdit = () => {
     setMenuOpen(false);
-    onEdit();
+    onEdit(resolvedId);
   };
   const handleDeleteRequested = () => {
     setMenuOpen(false);
@@ -51,7 +54,7 @@ export function CourseViewScreen({ course, onBack, onEdit }: Props) {
   };
   const handleDeleteConfirmed = () => {
     setConfirmDelete(false);
-    toast.success(`Deleted "${course.title}".`);
+    toast.success(`Deleted "${resolvedTitle}".`);
     onBack();
   };
 
@@ -71,33 +74,33 @@ export function CourseViewScreen({ course, onBack, onEdit }: Props) {
         contentContainerStyle={{ paddingBottom: 32 }}
       >
         <View style={styles.coverWrap}>
-          <CourseCover kind={course.kind} emblem={course.emblem} tag={course.tag} height={180} />
+          <CourseCover kind={course?.kind ?? 'cs'} emblem={course?.emblem ?? '??'} tag={course?.tag ?? ''} height={180} />
         </View>
 
         <View style={styles.head}>
           <View style={styles.badgeRow}>
             <Badge tone="success" icon={<CheckCircle size={11} color={colors.successDeep} />}>Published</Badge>
-            <Text style={styles.kindLabel}>{course.tag}</Text>
+            <Text style={styles.kindLabel}>{course?.tag ?? ''}</Text>
           </View>
-          <Text style={styles.title}>{course.title}</Text>
-          <Text style={styles.desc}>{course.short}</Text>
+          <Text style={styles.title}>{resolvedTitle}</Text>
+          <Text style={styles.desc}>{course?.short ?? ''}</Text>
         </View>
 
         {/* Stats */}
         <View style={styles.statsRow}>
-          <StatTile Icon={Users}   label="Students"  value={course.students.toLocaleString()} />
+          <StatTile Icon={Users}   label="Students"  value={(course?.students ?? 0).toLocaleString()} />
           <StatTile Icon={Layers}  label="Lessons"   value={String(totalLessons)} />
-          <StatTile Icon={Clock}   label="Duration"  value={course.time} />
-          <StatTile Icon={Star}    label="Rating"    value={String(course.rating)} tint={colors.warning} />
+          <StatTile Icon={Clock}   label="Duration"  value={course?.time ?? '—'} />
+          <StatTile Icon={Star}    label="Rating"    value={String(course?.rating ?? '—')} tint={colors.warning} />
         </View>
 
         {/* Instructor */}
         <View style={styles.instructorWrap}>
           <View style={styles.instructorRow}>
-            <Avatar size={42} name={course.instructor} variant="dark" />
+            <Avatar size={42} name={course?.instructor ?? '—'} variant="dark" />
             <View style={{ flex: 1 }}>
               <Text style={styles.instructorLabel}>Instructor</Text>
-              <Text style={styles.instructorName}>{course.instructor}</Text>
+              <Text style={styles.instructorName}>{course?.instructor ?? '—'}</Text>
             </View>
           </View>
         </View>
@@ -125,7 +128,7 @@ export function CourseViewScreen({ course, onBack, onEdit }: Props) {
           <SafeAreaView edges={['bottom']} style={{ width: '100%' }}>
             <Pressable style={styles.menuPanel} onPress={(e) => e.stopPropagation()}>
               <View style={styles.menuHandle} />
-              <Text style={styles.menuTitle}>{course.title}</Text>
+              <Text style={styles.menuTitle}>{resolvedTitle}</Text>
               <Text style={styles.menuSub}>Choose an action.</Text>
 
               <View style={{ gap: 8, marginTop: 14 }}>
@@ -172,7 +175,7 @@ export function CourseViewScreen({ course, onBack, onEdit }: Props) {
             <View style={styles.dialogIco}>
               <AlertTriangle size={24} color={colors.error} />
             </View>
-            <Text style={styles.dialogTitle}>Delete "{course.title}"?</Text>
+            <Text style={styles.dialogTitle}>Delete "{resolvedTitle}"?</Text>
             <Text style={styles.dialogBody}>
               This permanently removes the course and unenrols every student. This action cannot be undone.
             </Text>
@@ -285,7 +288,7 @@ function CurriculumLesson({ index, lesson }: { index: number; lesson: BuilderLes
       <View style={{ flex: 1 }}>
         <Text style={styles.curLessonTitle} numberOfLines={1}>{lesson.title}</Text>
         <View style={styles.curLessonMeta}>
-          {lesson.youtubeUrl ? (
+          {lesson.url ? (
             <View style={styles.metaChip}>
               <TvMinimalPlay size={10} color={colors.error} />
               <Text style={styles.metaChipText}>Video</Text>

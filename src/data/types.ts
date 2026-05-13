@@ -146,7 +146,7 @@ export interface BuilderLesson {
   id: string;
   title: string;
   description: string;
-  youtubeUrl: string;
+  url: string;           // any video URL (YouTube, Vimeo, etc.) — was youtubeUrl
   attachments: BuilderAttachment[];
 }
 

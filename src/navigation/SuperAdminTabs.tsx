@@ -76,18 +76,16 @@ function SuperMain({ navigation }: any) {
   const colors = useColors();
   const [tab, setTab] = React.useState<TabId>('dashboard');
   const initNew = useCourseBuilderStore((s) => s.initNew);
-  const load    = useCourseBuilderStore((s) => s.load);
 
-  const openCreate = () => {
-    initNew();
+  const onCourseCreated = (courseId: string) => {
+    initNew(courseId);
     navigation.navigate('CourseBuilder');
   };
-  const openView = (c: Course) => {
-    navigation.navigate('CourseView', { course: c });
+  const openView = (courseId: string) => {
+    navigation.navigate('CourseView', { courseId });
   };
-  const openEdit = (_c: Course) => {
-    load(SAMPLE_BUILDER_COURSE);
-    navigation.navigate('CourseBuilder');
+  const openEdit = (courseId: string) => {
+    navigation.navigate('CourseView', { courseId, startInEdit: true });
   };
   const goBell  = () => navigation.navigate('Notifications');
   const goAudit = () => navigation.navigate('Audit');
@@ -112,7 +110,7 @@ function SuperMain({ navigation }: any) {
         {tab === 'dashboard' && <SuperDashboardScreen onTabChange={handleDashboardNav} onBell={goBell} onOpenProfile={goEditProfile} />}
         {tab === 'approvals' && <SuperQueueScreen />}
         {tab === 'users'     && <UsersScreen navigation={navigation} />}
-        {tab === 'courses'   && <CoursesScreen onCourse={openView} onEditCourse={openEdit} onCreate={openCreate} />}
+        {tab === 'courses'   && <CoursesScreen onCourse={openView} onEditCourse={openEdit} onCourseCreated={onCourseCreated} />}
         {tab === 'more'      && (
           <MoreScreen
             role="super"
@@ -138,14 +136,14 @@ export function SuperAdminTabs() {
       <Stack.Screen name="CreateAdmin" component={CreateAdminScreen as any} />
       <Stack.Screen name="CourseView">
         {({ navigation, route }) => {
-          const course = (route.params as any).course as Course;
+          const params = route.params as any;
           return (
             <CourseViewScreen
-              course={course}
+              courseId={params.courseId}
+              course={params.course}
               onBack={() => navigation.goBack()}
-              onEdit={() => {
-                useCourseBuilderStore.getState().load(SAMPLE_BUILDER_COURSE);
-                navigation.replace('CourseBuilder');
+              onEdit={(courseId) => {
+                navigation.replace('CourseBuilder', { courseId });
               }}
             />
           );

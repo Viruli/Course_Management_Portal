@@ -1,6 +1,6 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-  Pressable, ScrollView, StyleSheet, Text, TextInput, View,
+  ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import {
   ArrowLeft, Check, Trash2, Paperclip, TvMinimalPlay, Plus,
@@ -13,10 +13,21 @@ import { Button } from '../../components/Button';
 import type { Colors } from '../../theme/colors';
 import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
 import { useCourseBuilderStore } from '../../store/courseBuilderStore';
+import { toast } from '../../store/uiStore';
+import {
+  updateLesson as apiUpdateLesson,
+  deleteLesson as apiDeleteLesson,
+} from '../../services/subjects';
+import {
+  uploadAttachment, deleteAttachment as apiDeleteAttachment,
+  isAttachmentTypeAccepted, ATTACHMENT_MAX_BYTES,
+} from '../../services/attachments';
+import * as DocumentPicker from 'expo-document-picker';
+import { ApiError } from '../../services/api';
 import type { BuilderAttachment } from '../../data/types';
 
 type Props = {
-  route: { params: { semesterId: string; subjectId: string; lessonId: string } };
+  route: { params: { semesterId: string; subjectId: string; lessonId: string; apiLessonId?: string; apiSubjectId?: string } };
   navigation: any;
 };
 
@@ -61,7 +72,64 @@ export function LessonEditorScreen({ route, navigation }: Props) {
   const addAttachment   = useCourseBuilderStore((s) => s.addAttachment);
   const removeAttachment = useCourseBuilderStore((s) => s.removeAttachment);
 
-  const ytId = useMemo(() => youtubeIdFromUrl(lesson?.youtubeUrl ?? ''), [lesson?.youtubeUrl]);
+  const [uploading, setUploading] = useState(false);
+
+  const ytId = useMemo(() => youtubeIdFromUrl(lesson?.url ?? ''), [lesson?.url]);
+
+  const handleDeleteLesson = async () => {
+    if (lessonId) {
+      apiDeleteLesson(lessonId).catch(() => {});
+    }
+    removeLesson(semesterId, subjectId, lessonId);
+    navigation.goBack();
+  };
+
+  const handleUpdateUrl = (v: string) => {
+    updateLesson(semesterId, subjectId, lessonId, { url: v });
+    if (lessonId) apiUpdateLesson(lessonId, { url: v }).catch(() => {});
+  };
+
+  const handlePickAttachment = async () => {
+    const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true });
+    if (result.canceled || !result.assets?.length) return;
+    const asset = result.assets[0];
+    const mimeType = asset.mimeType ?? '';
+    if (!isAttachmentTypeAccepted(mimeType)) {
+      toast.error('Only PDF, DOC, and DOCX files are accepted.');
+      return;
+    }
+    if (asset.size && asset.size > ATTACHMENT_MAX_BYTES) {
+      toast.error('File exceeds the 25 MB limit.');
+      return;
+    }
+    setUploading(true);
+    try {
+      const subjectId = route.params.apiSubjectId ?? route.params.subjectId;
+      const uploaded = await uploadAttachment(subjectId, {
+        uri: asset.uri, name: asset.name, type: mimeType,
+      });
+      addAttachment(semesterId, route.params.subjectId, lessonId, {
+        id:   uploaded.data.id,
+        name: uploaded.data.fileName,
+        kind: mimeType.includes('pdf') ? 'pdf' : 'doc',
+        size: `${Math.round((asset.size ?? 0) / 1024)} KB`,
+      });
+      toast.success('Attachment uploaded.');
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.code === 'UNSUPPORTED_MEDIA_TYPE') toast.error('Only PDF, DOC, and DOCX are accepted.');
+        else if (err.code === 'FILE_TOO_LARGE') toast.error('File exceeds the 25 MB limit.');
+        else toast.error(err.message);
+      } else {
+        toast.error('Upload failed. Please try again.');
+      }
+    } finally { setUploading(false); }
+  };
+
+  const handleDeleteAttachment = (attachmentId: string) => {
+    apiDeleteAttachment(attachmentId).catch(() => {});
+    removeAttachment(semesterId, subjectId, lessonId, attachmentId);
+  };
 
   if (!lesson) {
     return (
@@ -85,10 +153,7 @@ export function LessonEditorScreen({ route, navigation }: Props) {
         trailing={
           <Pressable
             hitSlop={6}
-            onPress={() => {
-              removeLesson(semesterId, subjectId, lessonId);
-              navigation.goBack();
-            }}
+            onPress={handleDeleteLesson}
             style={{ paddingHorizontal: 6 }}
           >
             <Trash2 size={18} color={colors.error} />
@@ -127,15 +192,15 @@ export function LessonEditorScreen({ route, navigation }: Props) {
         {/* YouTube */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Video</Text>
-          <Field label="YouTube link">
+          <Field label="Video URL (YouTube, Vimeo, or any video link)">
             <View style={styles.ytRow}>
               <View style={styles.ytIco}>
                 <TvMinimalPlay size={18} color={colors.error} />
               </View>
               <TextInput
-                value={lesson.youtubeUrl}
-                onChangeText={(v) => updateLesson(semesterId, subjectId, lessonId, { youtubeUrl: v })}
-                placeholder="https://www.youtube.com/watch?v=…"
+                value={lesson.url}
+                onChangeText={handleUpdateUrl}
+                placeholder="https://www.youtube.com/watch?v=… or any video URL"
                 placeholderTextColor={colors.muted}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -145,7 +210,7 @@ export function LessonEditorScreen({ route, navigation }: Props) {
             </View>
           </Field>
 
-          {lesson.youtubeUrl ? (
+          {lesson.url ? (
             ytId ? (
               <View style={styles.ytPreview}>
                 <View style={styles.ytPreviewFrame}>
@@ -160,10 +225,8 @@ export function LessonEditorScreen({ route, navigation }: Props) {
                 </Text>
               </View>
             ) : (
-              <View style={styles.ytInvalid}>
-                <Text style={styles.ytInvalidText}>
-                  Couldn't detect a YouTube video ID in that URL. Use a full youtube.com or youtu.be link.
-                </Text>
+              <View style={styles.ytPreview}>
+                <Text style={styles.ytPreviewLabel}>Non-YouTube video URL set.</Text>
               </View>
             )
           ) : null}
@@ -191,7 +254,7 @@ export function LessonEditorScreen({ route, navigation }: Props) {
                 </View>
                 <Pressable
                   hitSlop={8}
-                  onPress={() => removeAttachment(semesterId, subjectId, lessonId, a.id)}
+                  onPress={() => handleDeleteAttachment(a.id)}
                 >
                   <Trash2 size={14} color={colors.muted} />
                 </Pressable>
@@ -200,12 +263,14 @@ export function LessonEditorScreen({ route, navigation }: Props) {
           })}
 
           <Pressable
-            style={styles.addAttachment}
-            onPress={() => addAttachment(semesterId, subjectId, lessonId)}
+            style={[styles.addAttachment, uploading && { opacity: 0.5 }]}
+            onPress={uploading ? undefined : handlePickAttachment}
           >
-            <Paperclip size={14} color={colors.primary} />
-            <Text style={styles.addAttachmentText}>Add attachment</Text>
-            <Plus size={14} color={colors.primary} />
+            {uploading
+              ? <ActivityIndicator size="small" color={colors.primary} />
+              : <Paperclip size={14} color={colors.primary} />}
+            <Text style={styles.addAttachmentText}>{uploading ? 'Uploading…' : 'Add attachment'}</Text>
+            {!uploading && <Plus size={14} color={colors.primary} />}
           </Pressable>
 
           <Text style={styles.muted}>
