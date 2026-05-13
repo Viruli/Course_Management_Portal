@@ -32,7 +32,7 @@ export function AdminDashboardScreen({ onTabChange, onBell, onOpenAudit, onOpenP
   const styles = useThemedStyles(createStyles);
   const profile = useProfileStore((s) => s.profiles.admin);
   const pendingReg = useApprovalsStore((s) => s.registrations.filter((r) => r.status === 'pending'));
-  const pendingEnrCount = useApprovalsStore((s) => s.enrolments.filter((e) => e.status === 'pending').length);
+  const pendingEnrCount = useApprovalsStore((s) => s.enrolments.filter((e) => e.state === 'pending').length);
   const unread = useNotificationsStore((s) => s.byAudience.admin.filter((n) => !n.read).length);
   const total = pendingReg.length + pendingEnrCount;
 
@@ -103,10 +103,10 @@ export function AdminDashboardScreen({ onTabChange, onBell, onOpenAudit, onOpenP
           <View style={styles.list}>
             {pendingReg.slice(0, 4).map((r, i, arr) => (
               <Pressable key={r.id} style={[styles.listItem, i < arr.length - 1 && styles.listItemBorder]} onPress={() => onTabChange('registrations')}>
-                <Avatar size={36} name={r.name} />
+                <Avatar size={36} name={`${r.firstName} ${r.lastName}`} />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.listTitle}>{r.name}</Text>
-                  <Text style={styles.listSub} numberOfLines={1}>{r.email} · {r.when}</Text>
+                  <Text style={styles.listTitle}>{r.firstName} {r.lastName}</Text>
+                  <Text style={styles.listSub} numberOfLines={1}>{r.email} · {new Date(r.submittedAt).toLocaleDateString()}</Text>
                 </View>
                 <Badge tone="warning" icon={<Clock size={11} color={colors.warning} />}>Pending</Badge>
               </Pressable>

@@ -1,7 +1,7 @@
-import React, { useMemo } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
-  Filter, ClipboardList, CheckCheck, BookOpen, MessageSquare, Check, X,
+  Filter, ClipboardList, CheckCheck, BookOpen, Check, X,
 } from 'lucide-react-native';
 import { ScreenContainer } from '../../components/ScreenContainer';
 import { AppBar } from '../../components/AppBar';
@@ -11,6 +11,7 @@ import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Eyebrow } from '../../components/Eyebrow';
 import { EmptyState } from '../../components/EmptyState';
+import { RejectReasonModal } from '../../components/RejectReasonModal';
 import { useApprovalsStore } from '../../store/approvalsStore';
 import { toast } from '../../store/uiStore';
 import type { Colors } from '../../theme/colors';
@@ -19,28 +20,61 @@ import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
 export function EnrolmentsScreen() {
   const colors = useColors();
   const styles = useThemedStyles(createStyles);
-  const enrolments = useApprovalsStore((s) => s.enrolments);
-  const approveEnrolment = useApprovalsStore((s) => s.approveEnrolment);
-  const rejectEnrolment  = useApprovalsStore((s) => s.rejectEnrolment);
+
+  const enrolments         = useApprovalsStore((s) => s.enrolments);
+  const loadingEnrolments  = useApprovalsStore((s) => s.loadingEnrolments);
+  const fetchEnrollments   = useApprovalsStore((s) => s.fetchEnrollments);
+  const approveEnrolment   = useApprovalsStore((s) => s.approveEnrolment);
+  const rejectEnrolment    = useApprovalsStore((s) => s.rejectEnrolment);
   const approveAllEnrolments = useApprovalsStore((s) => s.approveAllEnrolments);
 
-  const pending = useMemo(() => enrolments.filter((e) => e.status === 'pending'), [enrolments]);
+  const [processingId,  setProcessingId]  = useState<string | null>(null);
+  const [rejectTarget,  setRejectTarget]  = useState<{ id: string; name: string } | null>(null);
 
-  const handleApprove = (id: string, name: string, course: string) => {
-    approveEnrolment(id);
-    toast.success(`Approved ${name} → ${course}.`);
+  useEffect(() => {
+    fetchEnrollments('pending');
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const pending = useMemo(() => enrolments.filter((e) => e.state === 'pending'), [enrolments]);
+
+  const handleApprove = async (id: string, name: string, course: string) => {
+    setProcessingId(id);
+    try {
+      await approveEnrolment(id);
+      toast.success(`Approved ${name} → ${course}.`);
+    } catch {
+      toast.error('Could not approve. Please try again.');
+    } finally {
+      setProcessingId(null);
+    }
   };
-  const handleReject = (id: string, name: string) => {
-    rejectEnrolment(id);
-    toast.info(`Rejected ${name}'s enrolment.`);
+
+  const handleRejectConfirm = async (reason?: string) => {
+    if (!rejectTarget) return;
+    const { id, name } = rejectTarget;
+    setRejectTarget(null);
+    setProcessingId(id);
+    try {
+      await rejectEnrolment(id, reason);
+      toast.success(`Rejected ${name}'s enrolment.`);
+    } catch {
+      toast.error('Could not reject. Please try again.');
+    } finally {
+      setProcessingId(null);
+    }
   };
-  const handleApproveAll = () => {
+
+  const handleApproveAll = async () => {
     if (pending.length === 0) {
-      toast.info('Nothing left to approve.');
+      toast.info('No pending enrolments to approve.');
       return;
     }
-    const n = approveAllEnrolments();
-    toast.success(`Approved ${n} enrolment${n === 1 ? '' : 's'}.`);
+    const { approved, failed } = await approveAllEnrolments();
+    if (failed === 0) {
+      toast.success(`${approved} enrolment${approved === 1 ? '' : 's'} approved.`);
+    } else {
+      toast.info(`${approved} approved. ${failed} failed.`);
+    }
   };
 
   return (
@@ -49,7 +83,7 @@ export function EnrolmentsScreen() {
         title="Enrolment requests"
         subtitle={`${pending.length} awaiting approval`}
         trailing={
-          <IconBtn onPress={() => toast.info('Filter coming soon.')}>
+          <IconBtn onPress={() => toast.info('Course filter coming soon.')}>
             <Filter size={18} color={colors.primary} />
           </IconBtn>
         }
@@ -63,59 +97,67 @@ export function EnrolmentsScreen() {
           </Pressable>
         </View>
 
-        {pending.length === 0 ? (
+        {loadingEnrolments ? (
+          <ActivityIndicator color={colors.primary} style={{ marginTop: 32 }} />
+        ) : pending.length === 0 ? (
           <EmptyState icon="CheckCheck" title="All clear" body="No enrolment requests are waiting on you." />
-        ) : pending.map((e) => (
-          <View key={e.id} style={styles.card}>
-            <View style={styles.headRow2}>
-              <Avatar size={40} name={e.name} variant="dark" />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.name}>{e.name}</Text>
-                <Text style={styles.when}>{e.when}</Text>
+        ) : pending.map((e) => {
+          const isProcessing = processingId === e.id;
+          return (
+            <View key={e.id} style={styles.card}>
+              <View style={styles.headRow2}>
+                <Avatar size={40} name={e.studentName} variant="dark" />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.name}>{e.studentName}</Text>
+                  <Text style={styles.sub}>{e.studentEmail}</Text>
+                  <Text style={styles.when}>{new Date(e.submittedAt).toLocaleDateString()}</Text>
+                </View>
+                <Badge tone="warning">Pending</Badge>
               </View>
-              <Badge tone="warning">Pending</Badge>
-            </View>
 
-            <View style={styles.courseRow}>
-              <View style={styles.courseIcon}>
-                <BookOpen size={16} color={colors.accent} />
+              <View style={styles.courseRow}>
+                <View style={styles.courseIcon}>
+                  <BookOpen size={16} color={colors.accent} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.courseLabel}>Wants access to</Text>
+                  <Text style={styles.courseName} numberOfLines={1}>{e.courseTitle}</Text>
+                </View>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.courseLabel}>Wants access to</Text>
-                <Text style={styles.courseName} numberOfLines={1}>{e.course}</Text>
-              </View>
-            </View>
 
-            <View style={styles.actions}>
-              <Button
-                variant="secondary" size="sm"
-                leftIcon={<MessageSquare size={13} color={colors.primary} />}
-                onPress={() => toast.info(`Adding a note to ${e.name}'s request.`)}
-              >
-                Note
-              </Button>
-              <View style={{ flex: 1 }}>
-                <Button
-                  variant="secondary" size="sm" full
-                  leftIcon={<X size={13} color={colors.primary} />}
-                  onPress={() => handleReject(e.id, e.name)}
-                >
-                  Reject
-                </Button>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Button
-                  size="sm" full
-                  leftIcon={<Check size={13} color={colors.white} />}
-                  onPress={() => handleApprove(e.id, e.name, e.course)}
-                >
-                  Approve
-                </Button>
+              <View style={styles.actions}>
+                <View style={{ flex: 1 }}>
+                  <Button
+                    variant="secondary" size="sm" full
+                    leftIcon={<X size={13} color={colors.primary} />}
+                    disabled={isProcessing}
+                    onPress={() => setRejectTarget({ id: e.id, name: e.studentName })}
+                  >
+                    Reject
+                  </Button>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Button
+                    size="sm" full
+                    leftIcon={<Check size={13} color={colors.white} />}
+                    disabled={isProcessing}
+                    onPress={() => handleApprove(e.id, e.studentName, e.courseTitle)}
+                  >
+                    {isProcessing ? 'Approving…' : 'Approve'}
+                  </Button>
+                </View>
               </View>
             </View>
-          </View>
-        ))}
+          );
+        })}
       </ScrollView>
+
+      <RejectReasonModal
+        visible={rejectTarget !== null}
+        title="Reject enrolment"
+        onConfirm={handleRejectConfirm}
+        onCancel={() => setRejectTarget(null)}
+      />
     </ScreenContainer>
   );
 }
@@ -131,6 +173,7 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   },
   headRow2: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   name: { fontSize: 14, fontWeight: '700', color: colors.primary },
+  sub:  { fontSize: 11, color: colors.bodyGreen, marginTop: 1 },
   when: { fontSize: 11, color: colors.muted, marginTop: 2 },
   courseRow: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
