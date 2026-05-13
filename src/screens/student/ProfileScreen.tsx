@@ -27,8 +27,15 @@ interface Props {
 export function ProfileScreen({ onTabChange, onBell, onEditProfile }: Props) {
   const colors = useColors();
   const styles = useThemedStyles(createStyles);
-  const profile    = useProfileStore((s) => s.profiles.student);
-  // apiProfile not yet used in display on this branch (wired in feat/profile-mgmt-password-reset-admin)
+  const mockProfile = useProfileStore((s) => s.profiles.student);
+  const apiProfile  = useProfileStore((s) => s.apiProfile);
+  // Prefer real API data; fall back to mock when not yet signed in with real auth.
+  const displayName = apiProfile
+    ? `${apiProfile.firstName} ${apiProfile.lastName}`.trim()
+    : fullName(mockProfile);
+  const displayEmail    = apiProfile?.email    ?? mockProfile.email;
+  const displayPhotoUri = apiProfile?.profilePhotoUrl ?? mockProfile.photoUri;
+  const profile = mockProfile; // kept for stats (enrolled/hours/streak) — still mock
   const unread = useNotificationsStore((s) => s.byAudience.student.filter((n) => !n.read).length);
   const [signingOut, setSigningOut] = useState(false);
 
@@ -65,13 +72,13 @@ export function ProfileScreen({ onTabChange, onBell, onEditProfile }: Props) {
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
         <View style={styles.profileHead}>
           <View style={styles.avatarWrap}>
-            <Avatar size={84} name={fullName(profile)} variant="lime" photoUri={profile.photoUri} />
+            <Avatar size={84} name={displayName} variant="lime" photoUri={displayPhotoUri ?? undefined} />
             <Pressable onPress={onEditProfile} style={styles.editBadge}>
               <Pencil size={12} color={colors.primary} />
             </Pressable>
           </View>
-          <Text style={styles.name}>{fullName(profile)}</Text>
-          <Text style={styles.email}>{profile.email}</Text>
+          <Text style={styles.name}>{displayName}</Text>
+          <Text style={styles.email}>{displayEmail}</Text>
           <Eyebrow lime icon={<GraduationCap size={12} color={colors.primary} />}>
             Student · {profile.joined}
           </Eyebrow>

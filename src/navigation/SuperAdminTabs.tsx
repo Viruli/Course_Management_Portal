@@ -8,6 +8,7 @@ import {
 import { SuperDashboardScreen } from '../screens/superadmin/SuperDashboardScreen';
 import { SuperQueueScreen } from '../screens/superadmin/SuperQueueScreen';
 import { AdminsScreen } from '../screens/superadmin/AdminsScreen';
+import { CreateAdminScreen } from '../screens/superadmin/CreateAdminScreen';
 import { UsersScreen } from '../screens/superadmin/UsersScreen';
 import { UserDetailScreen } from '../screens/superadmin/UserDetailScreen';
 import { CoursesScreen } from '../screens/admin/CoursesScreen';
@@ -133,6 +134,7 @@ export function SuperAdminTabs() {
       <Stack.Screen name="SuperMain" component={SuperMain} />
       <Stack.Screen name="UserDetail" component={UserDetailScreen as any} />
       <Stack.Screen name="Admins" component={AdminsScreen as any} />
+      <Stack.Screen name="CreateAdmin" component={CreateAdminScreen as any} />
       <Stack.Screen name="CourseView">
         {({ navigation, route }) => {
           const course = (route.params as any).course as Course;

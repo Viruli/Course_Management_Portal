@@ -18,6 +18,7 @@ interface Props {
   onSubmit: () => void;
   onSwitchToSignUp: () => void;
   onBack: () => void;
+  onForgotPassword: (email: string) => void;
 }
 
 // Maps Firebase Auth error codes to user-facing messages.
@@ -42,7 +43,7 @@ function firebaseErrorMessage(code: string): string {
   }
 }
 
-export function SignInScreen({ onSubmit, onSwitchToSignUp, onBack }: Props) {
+export function SignInScreen({ onSubmit, onSwitchToSignUp, onBack, onForgotPassword }: Props) {
   const colors = useColors();
   const styles = useThemedStyles(createStyles);
 
@@ -141,7 +142,7 @@ export function SignInScreen({ onSubmit, onSwitchToSignUp, onBack }: Props) {
 
           <View style={styles.row}>
             <View />
-            <Pressable onPress={() => toast.info('Password reset — coming soon.')}>
+            <Pressable onPress={() => onForgotPassword(email.trim())}>
               <Text style={styles.forgot}>Forgot?</Text>
             </Pressable>
           </View>

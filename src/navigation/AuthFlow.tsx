@@ -5,6 +5,7 @@ import { OnboardingScreen } from '../screens/auth/OnboardingScreen';
 import { SignInScreen } from '../screens/auth/SignInScreen';
 import { SignUpScreen } from '../screens/auth/SignUpScreen';
 import { PendingScreen } from '../screens/auth/PendingScreen';
+import { PasswordResetScreen } from '../screens/auth/PasswordResetScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -34,7 +35,7 @@ export function AuthFlow() {
           <SignInScreen
             onBack={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Splash'))}
             onSwitchToSignUp={() => navigation.navigate('SignUp')}
-            // SignInScreen calls setRole internally; RootNavigator switches automatically.
+            onForgotPassword={(email) => navigation.navigate('PasswordReset', { email })}
             onSubmit={() => {}}
           />
         )}
@@ -57,6 +58,18 @@ export function AuthFlow() {
             <PendingScreen
               message={message}
               onSignOut={() => navigation.popToTop()}
+            />
+          );
+        }}
+      </Stack.Screen>
+
+      <Stack.Screen name="PasswordReset">
+        {({ navigation, route }) => {
+          const email = (route.params as { email?: string } | undefined)?.email;
+          return (
+            <PasswordResetScreen
+              initialEmail={email ?? ''}
+              onBack={() => navigation.goBack()}
             />
           );
         }}

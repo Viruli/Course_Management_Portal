@@ -29,7 +29,12 @@ export function MoreScreen({ role, onOpenAudit, onOpenCourses, onOpenStudents, o
   const colors = useColors();
   const styles = useThemedStyles(createStyles);
   const isSuper    = role === 'super';
-  const profile    = useProfileStore((s) => isSuper ? s.profiles.super : s.profiles.admin);
+  const mockProfile = useProfileStore((s) => isSuper ? s.profiles.super : s.profiles.admin);
+  const apiProfile  = useProfileStore((s) => s.apiProfile);
+  const displayName    = apiProfile ? `${apiProfile.firstName} ${apiProfile.lastName}`.trim() : fullName(mockProfile);
+  const displayEmail   = apiProfile?.email    ?? mockProfile.email;
+  const displayPhotoUri = apiProfile?.profilePhotoUrl ?? mockProfile.photoUri;
+  const profile = mockProfile; // kept for title/role display
   const [signingOut, setSigningOut] = useState(false);
 
   const baseItems = [
@@ -66,14 +71,14 @@ export function MoreScreen({ role, onOpenAudit, onOpenCourses, onOpenStudents, o
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
         <Pressable style={styles.userCard} onPress={onEditProfile}>
           <View style={styles.avatarWrap}>
-            <Avatar size={56} name={fullName(profile)} variant="lime" photoUri={profile.photoUri} />
+            <Avatar size={56} name={displayName} variant="lime" photoUri={displayPhotoUri ?? undefined} />
             <View style={styles.editBadge}>
               <Pencil size={11} color={colors.primary} />
             </View>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.userName}>{fullName(profile)}</Text>
-            <Text style={styles.userEmail}>{profile.email}</Text>
+            <Text style={styles.userName}>{displayName}</Text>
+            <Text style={styles.userEmail}>{displayEmail}</Text>
             <View style={{ marginTop: 6 }}>
               <Eyebrow lime icon={<Shield size={11} color={colors.primary} />}>{profile.title ?? (isSuper ? 'Super Admin' : 'Admin')}</Eyebrow>
             </View>
