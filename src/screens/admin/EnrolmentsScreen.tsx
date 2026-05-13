@@ -11,6 +11,7 @@ import { IconBtn } from '../../components/IconBtn';
 import { Avatar } from '../../components/Avatar';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
+import { Tabs } from '../../components/Tabs';
 import { Eyebrow } from '../../components/Eyebrow';
 import { EmptyState } from '../../components/EmptyState';
 import { RejectReasonModal } from '../../components/RejectReasonModal';
@@ -32,6 +33,7 @@ export function EnrolmentsScreen() {
 
   const [processingId,    setProcessingId]    = useState<string | null>(null);
   const [rejectTarget,    setRejectTarget]     = useState<{ id: string; name: string } | null>(null);
+  const [tabFilter,         setTabFilter]          = useState<'pending' | 'approved' | 'rejected'>('pending');
   const [filterModalOpen,   setFilterModalOpen]   = useState(false);
   const [selectedCourseId,  setSelectedCourseId]  = useState<string | null>(null);
   const [courseSearch,      setCourseSearch]       = useState('');
@@ -40,21 +42,29 @@ export function EnrolmentsScreen() {
     fetchEnrollments('pending');
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const pending = useMemo(() => enrolments.filter((e) => e.state === 'pending'), [enrolments]);
+  // Per-tab counts
+  const counts = useMemo(() => ({
+    pending:  enrolments.filter((e) => e.state === 'pending').length,
+    approved: enrolments.filter((e) => e.state === 'approved').length,
+    rejected: enrolments.filter((e) => e.state === 'rejected').length,
+  }), [enrolments]);
 
-  // Unique courses from pending enrollments for the filter list
+  // Items for the active tab
+  const tabItems = useMemo(() => enrolments.filter((e) => e.state === tabFilter), [enrolments, tabFilter]);
+
+  // Unique courses in the active tab for the filter list
   const courses = useMemo(() => {
     const seen = new Set<string>();
-    return pending
+    return tabItems
       .filter((e) => { if (seen.has(e.courseId)) return false; seen.add(e.courseId); return true; })
       .map((e) => ({ id: e.courseId, title: e.courseTitle }));
-  }, [pending]);
+  }, [tabItems]);
 
-  // Apply course filter client-side
+  // Apply course filter client-side within the active tab
   const filtered = useMemo(() => {
-    if (!selectedCourseId) return pending;
-    return pending.filter((e) => e.courseId === selectedCourseId);
-  }, [pending, selectedCourseId]);
+    if (!selectedCourseId) return tabItems;
+    return tabItems.filter((e) => e.courseId === selectedCourseId);
+  }, [tabItems, selectedCourseId]);
 
   const selectedCourseTitle = courses.find((c) => c.id === selectedCourseId)?.title;
 
@@ -86,7 +96,7 @@ export function EnrolmentsScreen() {
   };
 
   const handleApproveAll = async () => {
-    if (filtered.length === 0) {
+    if (counts.pending === 0) {
       toast.info('No pending enrolments to approve.');
       return;
     }
@@ -102,7 +112,7 @@ export function EnrolmentsScreen() {
     <ScreenContainer edges={['top']} bg={colors.surface2}>
       <AppBar
         title="Enrolment requests"
-        subtitle={`${filtered.length} awaiting approval${selectedCourseId ? ' (filtered)' : ''}`}
+        subtitle={`${filtered.length} ${tabFilter}${selectedCourseId ? ' (filtered)' : ''}`}
         trailing={
           <IconBtn onPress={() => setFilterModalOpen(true)}>
             <View style={{ position: 'relative' }}>
@@ -124,7 +134,21 @@ export function EnrolmentsScreen() {
         </Pressable>
       ) : null}
 
+      <Tabs
+        items={[
+          { id: 'pending',  label: 'Pending',  count: counts.pending },
+          { id: 'approved', label: 'Approved', count: counts.approved },
+          { id: 'rejected', label: 'Rejected', count: counts.rejected },
+        ]}
+        active={tabFilter}
+        onChange={(id) => {
+          setTabFilter(id as 'pending' | 'approved' | 'rejected');
+          setSelectedCourseId(null);  // clear course filter on tab switch
+        }}
+      />
+
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+        {tabFilter === 'pending' && (
         <View style={styles.headRow}>
           <Eyebrow icon={<ClipboardList size={12} color={colors.bodyGreen} />}>Course access</Eyebrow>
           <Pressable style={styles.approveAll} onPress={handleApproveAll}>
@@ -132,16 +156,19 @@ export function EnrolmentsScreen() {
             <Text style={styles.approveAllText}>Approve all</Text>
           </Pressable>
         </View>
+        )}
 
         {loadingEnrolments ? (
           <ActivityIndicator color={colors.primary} style={{ marginTop: 32 }} />
         ) : filtered.length === 0 ? (
           <EmptyState
             icon="CheckCheck"
-            title="All clear"
+            title={tabFilter === 'pending' ? 'All clear' : `No ${tabFilter} enrolments`}
             body={selectedCourseId
-              ? 'No pending enrolments for this course.'
-              : 'No enrolment requests are waiting on you.'}
+              ? `No ${tabFilter} enrolments for this course.`
+              : tabFilter === 'pending'
+              ? 'No enrolment requests are waiting on you.'
+              : `${tabFilter.charAt(0).toUpperCase() + tabFilter.slice(1)} enrolments will appear here.`}
           />
         ) : filtered.map((e) => {
           const isProcessing = processingId === e.id;
@@ -154,7 +181,9 @@ export function EnrolmentsScreen() {
                   <Text style={styles.sub}>{e.studentEmail}</Text>
                   <Text style={styles.when}>{new Date(e.submittedAt).toLocaleDateString()}</Text>
                 </View>
-                <Badge tone="warning">Pending</Badge>
+                {e.state === 'pending'  && <Badge tone="warning">Pending</Badge>}
+                {e.state === 'approved' && <Badge tone="success">Approved</Badge>}
+                {e.state === 'rejected' && <Badge tone="error">Rejected</Badge>}
               </View>
 
               <View style={styles.courseRow}>
@@ -162,33 +191,36 @@ export function EnrolmentsScreen() {
                   <BookOpen size={16} color={colors.accent} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.courseLabel}>Wants access to</Text>
+                  <Text style={styles.courseLabel}>Course</Text>
                   <Text style={styles.courseName} numberOfLines={1}>{e.courseTitle}</Text>
                 </View>
               </View>
 
-              <View style={styles.actions}>
-                <View style={{ flex: 1 }}>
-                  <Button
-                    variant="secondary" size="sm" full
-                    leftIcon={<X size={13} color={colors.primary} />}
-                    disabled={isProcessing}
-                    onPress={() => setRejectTarget({ id: e.id, name: e.studentName })}
-                  >
-                    Reject
-                  </Button>
+              {/* Only show action buttons on the pending tab */}
+              {tabFilter === 'pending' && (
+                <View style={styles.actions}>
+                  <View style={{ flex: 1 }}>
+                    <Button
+                      variant="secondary" size="sm" full
+                      leftIcon={<X size={13} color={colors.primary} />}
+                      disabled={isProcessing}
+                      onPress={() => setRejectTarget({ id: e.id, name: e.studentName })}
+                    >
+                      Reject
+                    </Button>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Button
+                      size="sm" full
+                      leftIcon={<Check size={13} color={colors.white} />}
+                      disabled={isProcessing}
+                      onPress={() => handleApprove(e.id, e.studentName, e.courseTitle)}
+                    >
+                      {isProcessing ? 'Approving…' : 'Approve'}
+                    </Button>
+                  </View>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Button
-                    size="sm" full
-                    leftIcon={<Check size={13} color={colors.white} />}
-                    disabled={isProcessing}
-                    onPress={() => handleApprove(e.id, e.studentName, e.courseTitle)}
-                  >
-                    {isProcessing ? 'Approving…' : 'Approve'}
-                  </Button>
-                </View>
-              </View>
+              )}
             </View>
           );
         })}
@@ -251,7 +283,7 @@ export function EnrolmentsScreen() {
                     <Text style={[styles.courseOptionText, !selectedCourseId && styles.courseOptionTextActive]}>
                       All courses
                     </Text>
-                    <Text style={styles.courseOptionCount}>{pending.length} requests</Text>
+                    <Text style={styles.courseOptionCount}>{tabItems.length} requests</Text>
                     {!selectedCourseId ? <Check size={16} color={colors.accent} /> : null}
                   </Pressable>
                 ) : null}
@@ -260,7 +292,7 @@ export function EnrolmentsScreen() {
                 {courses
                   .filter((c) => !courseSearch || c.title.toLowerCase().includes(courseSearch.toLowerCase()))
                   .map((c) => {
-                    const count  = pending.filter((e) => e.courseId === c.id).length;
+                    const count  = tabItems.filter((e) => e.courseId === c.id).length;
                     const active = selectedCourseId === c.id;
                     return (
                       <Pressable
