@@ -23,6 +23,8 @@ import {
 import { updateCourse, publishCourse } from '../../services/courses';
 import { ApiError } from '../../services/api';
 import { toast } from '../../store/uiStore';
+import { DebugPanel } from '../../components/DebugPanel';
+import { CoverImagePicker } from '../../components/CoverImagePicker';
 
 interface Props {
   route?: { params?: { mode?: 'create' | 'edit'; courseId?: string } };
@@ -35,12 +37,19 @@ export function CourseBuilderScreen({ navigation }: Props) {
   const course     = useCourseBuilderStore((s) => s.course);
   const courseId   = useCourseBuilderStore((s) => s.courseId);
   const isEditing  = useCourseBuilderStore((s) => s.isEditing);
-  const { setTitle, setDescription, addSemester, renameSemester, removeSemester,
+  const { setTitle, setDescription, setCoverImageUrl,
+          addSemester, renameSemester, removeSemester,
           addSubject, renameSubject, removeSubject, addLesson, removeLesson } = useCourseBuilderStore();
 
   const [expanded,  setExpanded]  = useState<Record<string, boolean>>({});
   const [actionId,  setActionId]  = useState<string | null>(null);  // in-flight ID
   const [publishing, setPublishing] = useState(false);
+
+  // ── Add semester modal state ──────────────────────────────────────────────
+  const [semModal,    setSemModal]    = useState(false);
+  const [semTitle,    setSemTitle]    = useState('');
+  const [semError,    setSemError]    = useState('');
+  const [semSaving,   setSemSaving]   = useState(false);
 
   // ── Add subject modal state ───────────────────────────────────────────────
   const [subModal,    setSubModal]    = useState<{ semesterId: string } | null>(null);
@@ -69,23 +78,32 @@ export function CourseBuilderScreen({ navigation }: Props) {
 
   // ── API-backed mutations ──────────────────────────────────────────────────
 
-  const onAddSemester = async () => {
+  const onAddSemester = () => {
     if (!courseId) { toast.error('Save the course first.'); return; }
-    setActionId('new-semester');
+    setSemTitle(''); setSemError('');
+    setSemModal(true);
+  };
+
+  const onSubmitSemester = async () => {
+    if (!semTitle.trim()) { setSemError('Semester title is required.'); return; }
+    setSemSaving(true); setSemError('');
     try {
-      const result = await createSemester(courseId, {
-        name: `Semester ${course.semesters.length + 1}`,
+      const result = await createSemester(courseId!, {
+        title: semTitle.trim(),
         sortOrder: course.semesters.length + 1,
       });
-      addSemester(result.data.id, result.data.name);
+      addSemester(result.data.id, result.data.title ?? result.data.name ?? semTitle.trim());
       setExpanded((p) => ({ ...p, [result.data.id]: true }));
-    } catch { toast.error('Failed to add semester.'); }
-    finally { setActionId(null); }
+      setSemModal(false);
+    } catch (err) {
+      if (err instanceof ApiError) setSemError(`${err.code}: ${err.message}`);
+      else setSemError('Failed to add semester. Try again.');
+    } finally { setSemSaving(false); }
   };
 
   const onRenameSemester = (semesterId: string, name: string) => {
     renameSemester(semesterId, name);
-    updateSemester(semesterId, { name }).catch(() => {});
+    updateSemester(semesterId, { title: name }).catch(() => {});
   };
 
   const onRemoveSemester = async (semesterId: string) => {
@@ -133,7 +151,11 @@ export function CourseBuilderScreen({ navigation }: Props) {
 
   const onSaveDraft = async () => {
     if (courseId && course.title.trim()) {
-      updateCourse(courseId, { title: course.title.trim(), description: course.description }).catch(() => {});
+      const patch: Parameters<typeof updateCourse>[1] = {
+        title: course.title.trim(), description: course.description,
+      };
+      if (course.coverImageUrl?.trim()) patch.coverImageUrl = course.coverImageUrl.trim();
+      updateCourse(courseId, patch).catch(() => {});
     }
     toast.info(course.title.trim() ? `Draft saved: "${course.title}".` : 'Draft saved.');
     navigation.goBack();
@@ -194,6 +216,13 @@ export function CourseBuilderScreen({ navigation }: Props) {
                 multiline
                 style={[styles.input, styles.textarea]}
                 textAlignVertical="top"
+              />
+            </Field>
+
+            <Field label="Cover image (optional)">
+              <CoverImagePicker
+                value={course.coverImageUrl}
+                onChange={setCoverImageUrl}
               />
             </Field>
           </View>
@@ -346,14 +375,13 @@ export function CourseBuilderScreen({ navigation }: Props) {
           <Pressable
             style={[styles.addSemester, !courseId && { opacity: 0.4 }]}
             onPress={onAddSemester}
-            disabled={!courseId || actionId === 'new-semester'}
+            disabled={!courseId}
           >
-            {actionId === 'new-semester'
-              ? <ActivityIndicator size="small" color={colors.primary} />
-              : <Plus size={16} color={colors.primary} />}
+            <Plus size={16} color={colors.primary} />
             <Text style={styles.addSemesterText}>Add semester</Text>
           </Pressable>
         </View>
+        <DebugPanel tags={['semesters.create', 'subjects.create', 'courses.publish']} title="Builder debug" />
       </ScrollView>
 
       {/* Sticky save bar */}
@@ -371,6 +399,27 @@ export function CourseBuilderScreen({ navigation }: Props) {
           </Button>
         </View>
       </View>
+
+      {/* Add semester modal */}
+      <Modal transparent animationType="slide" visible={semModal} onRequestClose={() => setSemModal(false)}>
+        <Pressable style={subStyles.backdrop} onPress={() => setSemModal(false)}>
+          <Pressable style={subStyles.sheet} onPress={() => {}}>
+            <Text style={subStyles.title}>Add semester</Text>
+            <TextInput
+              style={subStyles.input}
+              value={semTitle}
+              onChangeText={(t) => { setSemTitle(t); setSemError(''); }}
+              placeholder="e.g. Semester 1"
+              placeholderTextColor="#999"
+              autoFocus
+            />
+            {semError ? <Text style={subStyles.error}>{semError}</Text> : null}
+            <Button full disabled={semSaving} onPress={onSubmitSemester}>
+              {semSaving ? 'Adding…' : 'Add semester'}
+            </Button>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Add subject modal */}
       <Modal transparent animationType="slide" visible={subModal !== null} onRequestClose={() => setSubModal(null)}>

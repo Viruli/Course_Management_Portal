@@ -19,6 +19,7 @@ import {
   listCourses, createCourse, publishCourse, unpublishCourse,
   archiveCourse, deleteCourse,
 } from '../../services/courses';
+import { CoverImagePicker } from '../../components/CoverImagePicker';
 import { ApiError } from '../../services/api';
 import { toast } from '../../store/uiStore';
 import type { Colors } from '../../theme/colors';
@@ -28,7 +29,7 @@ import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
 interface Props {
   onCourse:        (courseId: string) => void;
   onEditCourse:    (courseId: string) => void;
-  onCourseCreated: (courseId: string) => void;
+  onCourseCreated: (courseId: string, title: string, description: string, coverImageUrl: string) => void;
 }
 
 type TabState = 'published' | 'draft' | 'archived';
@@ -48,6 +49,7 @@ export function CoursesScreen({ onCourse, onEditCourse, onCourseCreated }: Props
   const [createOpen,    setCreateOpen]    = useState(false);
   const [createTitle,   setCreateTitle]   = useState('');
   const [createDesc,    setCreateDesc]    = useState('');
+  const [createCover,   setCreateCover]   = useState('');
   const [createError,   setCreateError]   = useState('');
   const [creating,      setCreating]      = useState(false);
 
@@ -72,9 +74,17 @@ export function CoursesScreen({ onCourse, onEditCourse, onCourseCreated }: Props
     if (!createDesc.trim()) { setCreateError('Description is required.'); return; }
     setCreating(true); setCreateError('');
     try {
-      const result = await createCourse({ title: createTitle.trim(), description: createDesc.trim() });
-      setCreateOpen(false); setCreateTitle(''); setCreateDesc('');
-      onCourseCreated(result.data.id);
+      const payload: Parameters<typeof createCourse>[0] = {
+        title:       createTitle.trim(),
+        description: createDesc.trim(),
+      };
+      if (createCover.trim()) payload.coverImageUrl = createCover.trim();
+      const result     = await createCourse(payload);
+      const savedTitle = createTitle.trim();
+      const savedDesc  = createDesc.trim();
+      const savedCover = createCover.trim();
+      setCreateOpen(false); setCreateTitle(''); setCreateDesc(''); setCreateCover('');
+      onCourseCreated(result.data.id, savedTitle, savedDesc, savedCover);
     } catch (err) {
       if (err instanceof ApiError && err.code === 'COURSE_TITLE_EXISTS') {
         setCreateError('A course with this title already exists.');
@@ -307,6 +317,15 @@ export function CoursesScreen({ onCourse, onEditCourse, onCourseCreated }: Props
                 multiline
                 numberOfLines={3}
                 maxLength={5000}
+              />
+            </View>
+
+            <View style={{ gap: 4 }}>
+              <Text style={styles.inputLabel}>Cover image (optional)</Text>
+              <CoverImagePicker
+                value={createCover}
+                onChange={(url) => { setCreateCover(url); setCreateError(''); }}
+                disabled={creating}
               />
             </View>
 

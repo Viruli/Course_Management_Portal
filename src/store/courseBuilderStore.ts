@@ -12,6 +12,7 @@ const emptyCourse = (): BuilderCourse => ({
   title: '',
   type: 'Engineering',
   description: '',
+  coverImageUrl: '',
   semesters: [],
 });
 
@@ -41,7 +42,7 @@ interface State {
 
   // Whole-course actions
   courseId: string | null;               // real server-assigned course ID
-  initNew: (courseId: string) => void;
+  initNew: (courseId: string, title?: string, description?: string, coverImageUrl?: string) => void;
   load: (course: BuilderCourse) => void;
   reset: () => void;
 
@@ -49,6 +50,7 @@ interface State {
   setTitle: (title: string) => void;
   setType: (type: CourseType) => void;
   setDescription: (description: string) => void;
+  setCoverImageUrl: (url: string) => void;
 
   // Semester
   addSemester: (id: string, name: string) => void;  // id from API response
@@ -90,13 +92,23 @@ export const useCourseBuilderStore = create<State>((set, get) => ({
   isEditing: false,
   courseId: null,
 
-  initNew: (courseId) => set({ course: emptyCourse(), isEditing: false, courseId }),
+  initNew: (courseId, title, description, coverImageUrl) => set({
+    course: {
+      ...emptyCourse(),
+      ...(title         ? { title }         : {}),
+      ...(description   ? { description }   : {}),
+      ...(coverImageUrl ? { coverImageUrl } : {}),
+    },
+    isEditing: false,
+    courseId,
+  }),
   load: (course) => set({ course, isEditing: true }),
   reset: () => set({ course: emptyCourse(), isEditing: false, courseId: null }),
 
-  setTitle:       (title)       => set((s) => ({ course: { ...s.course, title } })),
-  setType:        (type)        => set((s) => ({ course: { ...s.course, type } })),
-  setDescription: (description) => set((s) => ({ course: { ...s.course, description } })),
+  setTitle:         (title)         => set((s) => ({ course: { ...s.course, title } })),
+  setType:          (type)          => set((s) => ({ course: { ...s.course, type } })),
+  setDescription:   (description)   => set((s) => ({ course: { ...s.course, description } })),
+  setCoverImageUrl: (coverImageUrl) => set((s) => ({ course: { ...s.course, coverImageUrl } })),
 
   addSemester: (id, name) => {
     const sem: BuilderSemester = { id, name, subjects: [] };

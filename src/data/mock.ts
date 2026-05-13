@@ -121,6 +121,7 @@ export const SAMPLE_USERS: AppUser[] = [
 export const SAMPLE_BUILDER_COURSE: BuilderCourse = {
   id: 'math',
   title: 'Mathematics Foundations',
+  coverImageUrl: '',
   type: 'Mathematics',
   description:
     'A practical, paced introduction to algebra, geometry and statistics. ' +

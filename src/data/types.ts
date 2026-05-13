@@ -167,5 +167,6 @@ export interface BuilderCourse {
   title: string;
   type: CourseType;
   description: string;
+  coverImageUrl: string;
   semesters: BuilderSemester[];
 }

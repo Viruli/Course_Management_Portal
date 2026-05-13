@@ -3,7 +3,8 @@ import { apiFetch, ApiResult } from './api';
 export interface ApiSemester {
   id:           string;
   courseId:     string;
-  name:         string;
+  name:         string;   // response field
+  title:        string;   // API also returns title (same value)
   sortOrder:    number;
   subjectCount: number;
   createdAt:    string;
@@ -12,7 +13,7 @@ export interface ApiSemester {
 
 export function createSemester(
   courseId: string,
-  payload: { name: string; sortOrder: number },
+  payload: { title: string; sortOrder: number },
 ): Promise<ApiResult<ApiSemester>> {
   return apiFetch<ApiSemester>(`/courses/${courseId}/semesters`, {
     method: 'POST',
@@ -23,7 +24,7 @@ export function createSemester(
 
 export function updateSemester(
   id: string,
-  patch: { name?: string; sortOrder?: number },
+  patch: { title?: string; sortOrder?: number },
 ): Promise<ApiResult<ApiSemester>> {
   return apiFetch<ApiSemester>(`/semesters/${id}`, {
     method: 'PATCH',
