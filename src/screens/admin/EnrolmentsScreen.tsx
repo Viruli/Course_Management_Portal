@@ -13,6 +13,7 @@ import { Eyebrow } from '../../components/Eyebrow';
 import { EmptyState } from '../../components/EmptyState';
 import { RejectReasonModal } from '../../components/RejectReasonModal';
 import { useApprovalsStore } from '../../store/approvalsStore';
+import { DebugPanel } from '../../components/DebugPanel';
 import { toast } from '../../store/uiStore';
 import type { Colors } from '../../theme/colors';
 import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
@@ -158,6 +159,9 @@ export function EnrolmentsScreen() {
         onConfirm={handleRejectConfirm}
         onCancel={() => setRejectTarget(null)}
       />
+
+      {/* DEBUG — remove before PR */}
+      <DebugPanel tags={['enrollments.list', 'enrollments.approve', 'enrollments.reject']} title="Enrollments debug" />
     </ScreenContainer>
   );
 }

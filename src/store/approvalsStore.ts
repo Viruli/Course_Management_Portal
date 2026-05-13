@@ -149,8 +149,14 @@ export const useApprovalsStore = create<State>((set, get) => ({
     set({ loadingEnrolments: true });
     try {
       const result = await listAdminEnrollments({ status: status ?? 'pending', limit: 50 });
+      console.log('[DEBUG] fetchEnrollments:', status ?? 'pending', '→ total:', result.data.total, 'items:', result.data.items.length);
+      if (result.data.items.length > 0) {
+        console.log('[DEBUG] first enrollment keys:', Object.keys(result.data.items[0]));
+        console.log('[DEBUG] first enrollment state/status:', (result.data.items[0] as any).state, (result.data.items[0] as any).status);
+      }
       set({ enrolments: result.data.items });
-    } catch {
+    } catch (err: any) {
+      console.warn('[DEBUG] fetchEnrollments ERROR:', err?.code, err?.status, err?.message, err?.requestId);
       toast.error('Failed to load enrolments. Please try again.');
     } finally {
       set({ loadingEnrolments: false });
