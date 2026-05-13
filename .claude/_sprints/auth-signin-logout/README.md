@@ -17,11 +17,13 @@
 | 3 | UI Wiring — Sign-In | 🟢 Complete | 2–3 h | ~45 min | 2026-05-13 | 2026-05-13 |
 | 4 | UI Wiring — Logout | 🟢 Complete | 1–2 h | ~30 min | 2026-05-13 | 2026-05-13 |
 | 5 | Edge Cases & Polish | 🟢 Complete | 1–2 h | ~20 min | 2026-05-13 | 2026-05-13 |
-| 6 | Manual Test on Device | 🔴 Blocked | 1–2 h | — | 2026-05-13 | — |
+| 6 | Manual Test on Device | 🟢 Complete* | 1–2 h | ~2 h | 2026-05-13 | 2026-05-13 |
 
 **Status legend:** 🟡 Not Started · 🔵 In Progress · 🟢 Complete · 🔴 Blocked · ⏸ Paused
 
 **Total estimate:** 9–14 h
+
+> *Sprint 6 one deferred item: full 10-attempt lockout test using a throwaway account. All other tests passed. ✅
 
 ---
 

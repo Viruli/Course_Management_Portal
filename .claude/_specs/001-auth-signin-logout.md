@@ -2,7 +2,7 @@
 
 **Spec ID:** 001-auth-signin-logout
 **Branch:** `feat/auth-signin-logout`
-**Status:** draft
+**Status:** shipped
 **Created:** 2026-05-12
 
 ---

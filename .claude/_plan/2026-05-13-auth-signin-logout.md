@@ -3,7 +3,7 @@
 **Spec:** [`.claude/_specs/001-auth-signin-logout.md`](../_specs/001-auth-signin-logout.md)
 **Branch:** `feat/auth-signin-logout`
 **Created:** 2026-05-13
-**Status:** 🟡 Draft
+**Status:** 🟢 Complete
 **Estimated effort:** 2–3 days (Phase 1 partially blocked on Firebase config from backend team)
 
 ---

@@ -12,6 +12,7 @@ import { Eyebrow } from '../../components/Eyebrow';
 import { useProfileStore, fullName } from '../../store/profileStore';
 import { toast } from '../../store/uiStore';
 import { performLogout } from '../../services/auth';
+import { DebugPanel } from '../../components/DebugPanel';
 import type { Colors } from '../../theme/colors';
 import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
 import type { Role } from '../../data/types';
@@ -27,8 +28,9 @@ interface Props {
 export function MoreScreen({ role, onOpenAudit, onOpenCourses, onOpenAdmins, onEditProfile }: Props) {
   const colors = useColors();
   const styles = useThemedStyles(createStyles);
-  const isSuper = role === 'super';
-  const profile = useProfileStore((s) => isSuper ? s.profiles.super : s.profiles.admin);
+  const isSuper    = role === 'super';
+  const profile    = useProfileStore((s) => isSuper ? s.profiles.super : s.profiles.admin);
+  const apiProfile = useProfileStore((s) => s.apiProfile);   // DEBUG
   const [signingOut, setSigningOut] = useState(false);
 
   const baseItems = [
@@ -99,6 +101,26 @@ export function MoreScreen({ role, onOpenAudit, onOpenCourses, onOpenAdmins, onE
         <Button variant="secondary" full size="lg" leftIcon={<LogOut size={16} color={colors.primary} />} onPress={handleSignOut} disabled={signingOut}>
           {signingOut ? 'Signing out…' : 'Sign out'}
         </Button>
+
+        {/* ── DEBUG SECTION — remove before shipping ── */}
+        <View style={{ backgroundColor: '#1a1a2e', borderRadius: 12, padding: 12, gap: 4 }}>
+          <Text style={{ color: '#00ff88', fontSize: 11, fontWeight: '700', marginBottom: 4 }}>🔍 DEBUG — apiProfile store</Text>
+          {apiProfile ? (
+            <>
+              <Text style={{ color: '#fff', fontSize: 11 }}>uid: {apiProfile.uid}</Text>
+              <Text style={{ color: '#fff', fontSize: 11 }}>name: {apiProfile.firstName} {apiProfile.lastName}</Text>
+              <Text style={{ color: '#fff', fontSize: 11 }}>email: {apiProfile.email}</Text>
+              <Text style={{ color: '#fff', fontSize: 11 }}>role: {apiProfile.role}</Text>
+              <Text style={{ color: '#fff', fontSize: 11 }}>roles: {JSON.stringify(apiProfile.roles)}</Text>
+              <Text style={{ color: '#fff', fontSize: 11 }}>status: {apiProfile.status}</Text>
+            </>
+          ) : (
+            <Text style={{ color: '#ff4444', fontSize: 11 }}>apiProfile is NULL — setProfile was not called</Text>
+          )}
+        </View>
+        <DebugPanel tags={['auth.getMe', 'auth.login']} title="Sign-in API debug" />
+        {/* ── END DEBUG ── */}
+
       </ScrollView>
     </ScreenContainer>
   );
