@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   ChevronRight, Shield, BookOpen, History, Users, Megaphone, Settings, LifeBuoy,
@@ -9,9 +9,9 @@ import { AppBar } from '../../components/AppBar';
 import { Avatar } from '../../components/Avatar';
 import { Button } from '../../components/Button';
 import { Eyebrow } from '../../components/Eyebrow';
-import { useAppStore } from '../../store/appStore';
 import { useProfileStore, fullName } from '../../store/profileStore';
 import { toast } from '../../store/uiStore';
+import { performLogout } from '../../services/auth';
 import type { Colors } from '../../theme/colors';
 import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
 import type { Role } from '../../data/types';
@@ -27,9 +27,9 @@ interface Props {
 export function MoreScreen({ role, onOpenAudit, onOpenCourses, onOpenAdmins, onEditProfile }: Props) {
   const colors = useColors();
   const styles = useThemedStyles(createStyles);
-  const setRole = useAppStore(s => s.setRole);
   const isSuper = role === 'super';
   const profile = useProfileStore((s) => isSuper ? s.profiles.super : s.profiles.admin);
+  const [signingOut, setSigningOut] = useState(false);
 
   const baseItems = [
     { Icon: BookOpen,  label: 'Courses',       sub: '18 published · 3 drafts',     onPress: onOpenCourses },
@@ -40,9 +40,16 @@ export function MoreScreen({ role, onOpenAudit, onOpenCourses, onOpenAdmins, onE
     { Icon: LifeBuoy,  label: 'Help & support', sub: 'Contact us, FAQ',            onPress: () => toast.info('Support reachable at help@edupath.lk.') },
   ];
 
-  const handleSignOut = () => {
-    toast.success('Signed out.');
-    setRole('public');
+  const handleSignOut = async () => {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      await performLogout();
+    } catch {
+      toast.error('Sign out failed. Please try again.');
+    } finally {
+      setSigningOut(false);
+    }
   };
 
   const items = isSuper
@@ -89,8 +96,8 @@ export function MoreScreen({ role, onOpenAudit, onOpenCourses, onOpenAdmins, onE
           ))}
         </View>
 
-        <Button variant="secondary" full size="lg" leftIcon={<LogOut size={16} color={colors.primary} />} onPress={handleSignOut}>
-          Sign out
+        <Button variant="secondary" full size="lg" leftIcon={<LogOut size={16} color={colors.primary} />} onPress={handleSignOut} disabled={signingOut}>
+          {signingOut ? 'Signing out…' : 'Sign out'}
         </Button>
       </ScrollView>
     </ScreenContainer>

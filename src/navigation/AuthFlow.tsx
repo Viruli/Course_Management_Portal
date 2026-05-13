@@ -5,25 +5,10 @@ import { OnboardingScreen } from '../screens/auth/OnboardingScreen';
 import { SignInScreen } from '../screens/auth/SignInScreen';
 import { SignUpScreen } from '../screens/auth/SignUpScreen';
 import { PendingScreen } from '../screens/auth/PendingScreen';
-import { useAppStore } from '../store/appStore';
-import { SAMPLE_USERS } from '../data/mock';
-import type { AppRole } from '../data/types';
 
 const Stack = createNativeStackNavigator();
 
-// Demo login: look up the email in our sample user list to determine which
-// role's app to drop the user into. In production this comes from the auth
-// API response after a real password check.
-function resolveRole(email: string): AppRole | null {
-  const u = SAMPLE_USERS.find(
-    (x) => x.email.toLowerCase() === email.trim().toLowerCase(),
-  );
-  return u?.role ?? null;
-}
-
 export function AuthFlow() {
-  const setRole = useAppStore((s) => s.setRole);
-
   return (
     <Stack.Navigator
       initialRouteName="Splash"
@@ -49,17 +34,8 @@ export function AuthFlow() {
           <SignInScreen
             onBack={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Splash'))}
             onSwitchToSignUp={() => navigation.navigate('SignUp')}
-            onSubmit={(email) => {
-              const role = resolveRole(email);
-              if (role) {
-                // Drop the user into their role's app. RootNavigator switches
-                // when the role changes, so we don't navigate manually.
-                setRole(role);
-              } else {
-                // Unknown email — default to student in the design demo.
-                setRole('student');
-              }
-            }}
+            // SignInScreen calls setRole internally; RootNavigator switches automatically.
+            onSubmit={() => {}}
           />
         )}
       </Stack.Screen>

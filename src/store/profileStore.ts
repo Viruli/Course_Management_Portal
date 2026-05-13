@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { ApiUserProfile } from '../services/auth';
 
 export type ProfileRole = 'student' | 'admin' | 'super';
 
@@ -17,10 +18,15 @@ export interface ProfileData {
 }
 
 interface State {
+  // Real API profile — populated after sign-in, cleared on sign-out.
+  apiProfile: ApiUserProfile | null;
+  setProfile: (p: ApiUserProfile) => void;
+  clearProfile: () => void;
+
+  // Mock per-role profiles — still used by screens not yet wired to real API.
   profiles: Record<ProfileRole, ProfileData>;
   update: (role: ProfileRole, patch: Partial<ProfileData>) => void;
   setPhoto: (role: ProfileRole, uri: string | undefined) => void;
-  // Demo-only password change — no real auth backend.
   changePassword: (role: ProfileRole) => void;
 }
 
@@ -51,13 +57,17 @@ const initial: Record<ProfileRole, ProfileData> = {
 };
 
 export const useProfileStore = create<State>((set) => ({
+  apiProfile: null,
+  setProfile: (p) => set({ apiProfile: p }),
+  clearProfile: () => set({ apiProfile: null }),
+
   profiles: initial,
   update: (role, patch) =>
     set((s) => ({ profiles: { ...s.profiles, [role]: { ...s.profiles[role], ...patch } } })),
   setPhoto: (role, uri) =>
     set((s) => ({ profiles: { ...s.profiles, [role]: { ...s.profiles[role], photoUri: uri } } })),
   changePassword: () => {
-    // No-op in design build. In production this would call the auth API.
+    // No-op in design build. Real implementation calls POST /me/change-password.
   },
 }));
 
