@@ -23,7 +23,7 @@ export function RegistrationsScreen() {
   const colors = useColors();
   const styles = useThemedStyles(createStyles);
 
-  const registrations              = useApprovalsStore((s) => s.registrations);
+  const registrationsByStatus      = useApprovalsStore((s) => s.registrationsByStatus);
   const loadingRegistrations       = useApprovalsStore((s) => s.loadingRegistrations);
   const fetchRegistrations         = useApprovalsStore((s) => s.fetchRegistrations);
   const approveRegistration        = useApprovalsStore((s) => s.approveRegistration);
@@ -31,27 +31,39 @@ export function RegistrationsScreen() {
   const bulkApproveAllRegistrations = useApprovalsStore((s) => s.bulkApproveAllRegistrations);
 
   const [filter,      setFilter]      = useState<FilterStatus>('pending');
+  // Current tab's data — must be after filter state declaration
+  const registrations              = registrationsByStatus[filter];
   const [searchOpen,  setSearchOpen]  = useState(false);
   const [q,           setQ]           = useState('');
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [rejectTarget, setRejectTarget] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
+    // Fetch current tab's data when tab changes
     fetchRegistrations(filter, q || undefined);
   }, [filter]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Pre-load all three tabs on mount so counts are accurate immediately
+  useEffect(() => {
+    fetchRegistrations('approved');
+    fetchRegistrations('rejected');
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Each count comes from its own bucket — doesn't reset when other tabs load
   const counts = useMemo(() => ({
-    pending:  registrations.filter((r) => r.state === 'pending').length,
-    approved: registrations.filter((r) => r.state === 'approved').length,
-    rejected: registrations.filter((r) => r.state === 'rejected').length,
-  }), [registrations]);
+    pending:  registrationsByStatus.pending.length,
+    approved: registrationsByStatus.approved.length,
+    rejected: registrationsByStatus.rejected.length,
+  }), [registrationsByStatus]);
 
   const list = useMemo(() => {
     const ql = q.trim().toLowerCase();
-    return registrations
-      .filter((r) => r.state === filter)
-      .filter((r) => !ql || `${r.firstName} ${r.lastName}`.toLowerCase().includes(ql) || r.email.toLowerCase().includes(ql));
-  }, [registrations, filter, q]);
+    // registrations is already scoped to current filter tab
+    if (!ql) return registrations;
+    return registrations.filter((r) =>
+      `${r.firstName} ${r.lastName}`.toLowerCase().includes(ql) || r.email.toLowerCase().includes(ql),
+    );
+  }, [registrations, q]);
 
   const handleApprove = async (id: string, name: string) => {
     setProcessingId(id);

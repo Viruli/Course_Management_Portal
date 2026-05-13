@@ -15,12 +15,18 @@ import {
 } from '../services/enrollments';
 import { toast } from './uiStore';
 
+type RegistrationStatus = 'pending' | 'approved' | 'rejected';
+
 interface State {
   // ─── Registrations ──────────────────────────────────────────────────────────
-  registrations:        ApiRegistration[];
-  loadingRegistrations: boolean;
+  // Stored per-status so switching tabs doesn't overwrite other tabs' counts
+  registrationsByStatus: Record<RegistrationStatus, ApiRegistration[]>;
+  loadingRegistrations:  boolean;
 
-  fetchRegistrations:         (status: string, q?: string) => Promise<void>;
+  // Convenience getter for the current status slice
+  registrations:         ApiRegistration[];   // kept for backward compat — same as registrationsByStatus.pending by default
+
+  fetchRegistrations:         (status: RegistrationStatus, q?: string) => Promise<void>;
   approveRegistration:        (id: string) => Promise<void>;
   rejectRegistration:         (id: string, reason?: string) => Promise<void>;
   bulkApproveAllRegistrations: () => Promise<{ approved: number; failed: number }>;
@@ -38,14 +44,22 @@ interface State {
 export const useApprovalsStore = create<State>((set, get) => ({
   // ─── Registrations ────────────────────────────────────────────────────────
 
-  registrations:        [],
-  loadingRegistrations: false,
+  registrationsByStatus: { pending: [], approved: [], rejected: [] },
+  registrations:         [],   // alias to pending slice for backward compat
+  loadingRegistrations:  false,
 
   fetchRegistrations: async (status, q) => {
     set({ loadingRegistrations: true });
     try {
       const result = await listRegistrations({ status, q, limit: 50 });
-      set({ registrations: result.data.items });
+      set((s) => ({
+        registrationsByStatus: {
+          ...s.registrationsByStatus,
+          [status]: result.data.items,
+        },
+        // Keep registrations alias pointing to the currently active status
+        registrations: status === 'pending' ? result.data.items : s.registrations,
+      }));
     } catch {
       toast.error('Failed to load registrations. Please try again.');
     } finally {
@@ -56,7 +70,14 @@ export const useApprovalsStore = create<State>((set, get) => ({
   approveRegistration: async (id) => {
     try {
       await apiApproveReg(id);
-      set((s) => ({ registrations: s.registrations.filter((r) => r.id !== id) }));
+      // Remove from pending bucket
+      set((s) => ({
+        registrationsByStatus: {
+          ...s.registrationsByStatus,
+          pending: s.registrationsByStatus.pending.filter((r) => r.id !== id),
+        },
+        registrations: s.registrations.filter((r) => r.id !== id),
+      }));
     } catch (err: any) {
       if (err?.code === 'INVALID_STATE') {
         toast.error('This registration has already been processed.');
@@ -70,7 +91,13 @@ export const useApprovalsStore = create<State>((set, get) => ({
   rejectRegistration: async (id, reason) => {
     try {
       await apiRejectReg(id, reason);
-      set((s) => ({ registrations: s.registrations.filter((r) => r.id !== id) }));
+      set((s) => ({
+        registrationsByStatus: {
+          ...s.registrationsByStatus,
+          pending: s.registrationsByStatus.pending.filter((r) => r.id !== id),
+        },
+        registrations: s.registrations.filter((r) => r.id !== id),
+      }));
     } catch (err: any) {
       if (err?.code === 'INVALID_STATE') {
         toast.error('This registration has already been processed.');
@@ -82,9 +109,7 @@ export const useApprovalsStore = create<State>((set, get) => ({
   },
 
   bulkApproveAllRegistrations: async () => {
-    const ids = get().registrations
-      .filter((r) => r.state === 'pending')
-      .map((r) => r.id);
+    const ids = get().registrationsByStatus.pending.map((r) => r.id);
 
     if (ids.length === 0) return { approved: 0, failed: 0 };
 
@@ -98,9 +123,13 @@ export const useApprovalsStore = create<State>((set, get) => ({
         const result = await apiBulkApprove(chunk);
         totalApproved += result.data.approved.length;
         totalFailed   += result.data.failed.length;
-        // Remove approved items from local state
+        // Remove approved items from pending bucket
         const approvedSet = new Set(result.data.approved);
         set((s) => ({
+          registrationsByStatus: {
+            ...s.registrationsByStatus,
+            pending: s.registrationsByStatus.pending.filter((r) => !approvedSet.has(r.id)),
+          },
           registrations: s.registrations.filter((r) => !approvedSet.has(r.id)),
         }));
       } catch {
