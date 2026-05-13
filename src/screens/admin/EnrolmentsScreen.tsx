@@ -56,8 +56,9 @@ export function EnrolmentsScreen() {
   const courses = useMemo(() => {
     const seen = new Set<string>();
     return tabItems
+      .filter((e) => e.courseId && e.courseTitle)  // skip items with missing course info
       .filter((e) => { if (seen.has(e.courseId)) return false; seen.add(e.courseId); return true; })
-      .map((e) => ({ id: e.courseId, title: e.courseTitle }));
+      .map((e) => ({ id: e.courseId, title: e.courseTitle ?? '' }));
   }, [tabItems]);
 
   // Apply course filter client-side within the active tab
@@ -192,7 +193,7 @@ export function EnrolmentsScreen() {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.courseLabel}>Course</Text>
-                  <Text style={styles.courseName} numberOfLines={1}>{e.courseTitle}</Text>
+                  <Text style={styles.courseName} numberOfLines={1}>{e.courseTitle ?? '—'}</Text>
                 </View>
               </View>
 
@@ -290,7 +291,7 @@ export function EnrolmentsScreen() {
 
                 {/* Filtered course list */}
                 {courses
-                  .filter((c) => !courseSearch || c.title.toLowerCase().includes(courseSearch.toLowerCase()))
+                  .filter((c) => !courseSearch || (c.title ?? '').toLowerCase().includes(courseSearch.toLowerCase()))
                   .map((c) => {
                     const count  = tabItems.filter((e) => e.courseId === c.id).length;
                     const active = selectedCourseId === c.id;
