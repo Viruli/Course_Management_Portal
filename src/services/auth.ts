@@ -97,6 +97,24 @@ export async function loginUser(email: string, password: string): Promise<LoginR
     throw err;
   }
 
+  // Step 3: Block access based on account status.
+  // Firebase may issue a token even for pending/suspended accounts, so we
+  // enforce the status check here after receiving the profile from the backend.
+  if (profile.status !== 'approved') {
+    await signOut(auth).catch(() => null);  // clean up Firebase session
+
+    const messages: Record<string, string> = {
+      pending_approval: 'Your account is awaiting admin approval. You will be notified by email once approved.',
+      rejected:         'Your registration was not approved. Please contact support.',
+      suspended:        'Your account has been suspended. Please contact support.',
+    };
+    const message = messages[profile.status] ?? 'Your account is not active. Please contact support.';
+    const err: any = new Error(message);
+    err.code   = 'ACCOUNT_NOT_APPROVED';
+    err.status = profile.status;
+    throw err;
+  }
+
   return {
     role: toAppRole(profile.role),
     profile,

@@ -70,17 +70,22 @@ export function SignInScreen({ onSubmit, onSwitchToSignUp, onBack }: Props) {
       setRole(role);
       onSubmit();
     } catch (err) {
-      // Firebase errors have a `code` property but are not ApiErrors.
-      const firebaseCode = (err as { code?: string }).code;
+      const errCode = (err as { code?: string }).code;
 
-      if (firebaseCode?.startsWith('auth/')) {
-        // Track failure with the backend for lockout enforcement.
+      // Account not approved — loginUser already signed out of Firebase.
+      if (errCode === 'ACCOUNT_NOT_APPROVED') {
+        setAuthError((err as Error).message);
+        return;
+      }
+
+      // Firebase auth errors (bad credentials, user-disabled, etc.)
+      if (errCode?.startsWith('auth/')) {
         const { locked: isLocked } = await trackLoginFailure(email.trim());
         if (isLocked) {
           setLocked(true);
           setAuthError('Account locked. Try again in 15 minutes.');
         } else {
-          setAuthError(firebaseErrorMessage(firebaseCode));
+          setAuthError(firebaseErrorMessage(errCode));
         }
       } else if (err instanceof ApiError) {
         // GET /me failed after Firebase sign-in (loginUser cleans up Firebase session).
