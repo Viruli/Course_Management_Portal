@@ -118,15 +118,19 @@ const createStyles = (colors: Colors) => StyleSheet.create({
 });
 
 function StudentNotifications({ onBack }: { onBack: () => void }) {
-  const items = useNotificationsStore((s) => s.byAudience.student);
-  const markRead    = useNotificationsStore((s) => s.markRead);
-  const markAllRead = useNotificationsStore((s) => s.markAllRead);
+  const items              = useNotificationsStore((s) => s.items);
+  const fetchNotifications = useNotificationsStore((s) => s.fetchNotifications);
+  const markRead           = useNotificationsStore((s) => s.markRead);
+  const markAllRead        = useNotificationsStore((s) => s.markAllRead);
+
+  React.useEffect(() => { fetchNotifications(); }, []);
+
   return (
     <NotificationsScreen
       items={items}
       onBack={onBack}
-      onMarkAll={() => markAllRead('student')}
-      onItemPress={(id) => markRead('student', id)}
+      onMarkAll={async () => markAllRead()}
+      onItemPress={(id) => markRead(id)}
     />
   );
 }

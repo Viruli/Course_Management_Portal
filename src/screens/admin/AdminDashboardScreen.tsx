@@ -33,7 +33,7 @@ export function AdminDashboardScreen({ onTabChange, onBell, onOpenAudit, onOpenP
   const profile = useProfileStore((s) => s.profiles.admin);
   const pendingReg = useApprovalsStore((s) => s.registrations.filter((r) => r.state === 'pending'));
   const pendingEnrCount = useApprovalsStore((s) => s.enrolments.filter((e) => e.state === 'pending').length);
-  const unread = useNotificationsStore((s) => s.byAudience.admin.filter((n) => !n.read).length);
+  const unread = useNotificationsStore((s) => s.items.filter((n) => n.readAt === null).length);
   const total = pendingReg.length + pendingEnrCount;
 
   return (

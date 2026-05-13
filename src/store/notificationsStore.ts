@@ -1,41 +1,80 @@
 import { create } from 'zustand';
-import { NOTIFS_STUDENT, NOTIFS_ADMIN } from '../data/mock';
-import type { Notification } from '../data/types';
+import {
+  ApiNotification,
+  listNotifications,
+  markNotificationRead,
+  markAllNotificationsRead,
+} from '../services/notifications';
+import { toast } from './uiStore';
 
+// Kept for backward compat — no longer used in store logic
 export type NotificationAudience = 'student' | 'admin';
 
 interface State {
-  byAudience: Record<NotificationAudience, Notification[]>;
+  items:   ApiNotification[];
+  loading: boolean;
+  loaded:  boolean;
 
-  markRead: (audience: NotificationAudience, id: string) => void;
-  markAllRead: (audience: NotificationAudience) => number;
-  unreadCount: (audience: NotificationAudience) => number;
+  fetchNotifications:  () => Promise<void>;
+  markRead:            (id: string) => Promise<void>;
+  markAllRead:         () => Promise<number>; // returns markedCount
+  unreadCount:         () => number;
 }
 
 export const useNotificationsStore = create<State>((set, get) => ({
-  byAudience: {
-    student: NOTIFS_STUDENT,
-    admin:   NOTIFS_ADMIN,
+  items:   [],
+  loading: false,
+  loaded:  false,
+
+  fetchNotifications: async () => {
+    if (get().loaded) return; // prevent duplicate fetches in same session
+    set({ loading: true });
+    try {
+      const result = await listNotifications();
+      set({ items: result.data.items, loaded: true });
+    } catch {
+      toast.error('Failed to load notifications.');
+    } finally {
+      set({ loading: false });
+    }
   },
 
-  markRead: (audience, id) =>
+  markRead: async (id) => {
+    // Optimistic update — mark locally first, revert on failure
+    const original = get().items.find((n) => n.id === id)?.readAt ?? null;
     set((s) => ({
-      byAudience: {
-        ...s.byAudience,
-        [audience]: s.byAudience[audience].map((n) =>
-          n.id === id ? { ...n, read: true } : n,
-        ),
-      },
-    })),
-  markAllRead: (audience) => {
-    const before = get().byAudience[audience].filter((n) => !n.read).length;
-    set((s) => ({
-      byAudience: {
-        ...s.byAudience,
-        [audience]: s.byAudience[audience].map((n) => ({ ...n, read: true })),
-      },
+      items: s.items.map((n) =>
+        n.id === id ? { ...n, readAt: new Date().toISOString() } : n,
+      ),
     }));
-    return before;
+    try {
+      await markNotificationRead(id);
+    } catch {
+      // Revert on failure
+      set((s) => ({
+        items: s.items.map((n) =>
+          n.id === id ? { ...n, readAt: original } : n,
+        ),
+      }));
+      toast.error("Couldn't mark as read. Try again.");
+    }
   },
-  unreadCount: (audience) => get().byAudience[audience].filter((n) => !n.read).length,
+
+  markAllRead: async () => {
+    // Pessimistic — only update local state after API confirms
+    try {
+      const result = await markAllNotificationsRead();
+      const now = new Date().toISOString();
+      set((s) => ({
+        items:  s.items.map((n) => ({ ...n, readAt: n.readAt ?? now })),
+        loaded: false, // force re-fetch next time the screen opens
+      }));
+      return result.data.markedCount;
+    } catch {
+      toast.error("Couldn't mark all as read. Try again.");
+      return 0;
+    }
+  },
+
+  unreadCount: () => get().items.filter((n) => n.readAt === null).length,
 }));

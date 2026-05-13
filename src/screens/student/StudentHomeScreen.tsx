@@ -47,7 +47,7 @@ export function StudentHomeScreen({ onContinue, onCourse, onTabChange, onBell, o
   const current = COURSES.find(c => c.id === 'math')!;
 
   const profile = useProfileStore((s) => s.profiles.student);
-  const unread = useNotificationsStore((s) => s.byAudience.student.filter((n) => !n.read).length);
+  const unread = useNotificationsStore((s) => s.items.filter((n) => n.readAt === null).length);
 
   const handleCategory = (kind: CourseKind | null, label: string) => {
     if (onCategory) onCategory(kind);

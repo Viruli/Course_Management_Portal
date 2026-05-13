@@ -29,7 +29,7 @@ export function ProfileScreen({ onTabChange, onBell, onEditProfile }: Props) {
   const styles = useThemedStyles(createStyles);
   const profile    = useProfileStore((s) => s.profiles.student);
   // apiProfile not yet used in display on this branch (wired in feat/profile-mgmt-password-reset-admin)
-  const unread = useNotificationsStore((s) => s.byAudience.student.filter((n) => !n.read).length);
+  const unread = useNotificationsStore((s) => s.items.filter((n) => n.readAt === null).length);
   const [signingOut, setSigningOut] = useState(false);
 
   const items = [

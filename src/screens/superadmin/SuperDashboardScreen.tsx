@@ -37,7 +37,7 @@ export function SuperDashboardScreen({ onTabChange, onBell, onOpenProfile }: Pro
     s.registrations.filter((r) => r.state === 'pending').length +
     s.enrolments.filter((e) => e.state === 'pending').length
   );
-  const unread = useNotificationsStore((s) => s.byAudience.admin.filter((n) => !n.read).length);
+  const unread = useNotificationsStore((s) => s.items.filter((n) => n.readAt === null).length);
   const adminUsers = users.filter((u) => u.role === 'admin');
   const pendingAdmins = adminUsers.filter((u) => u.status === 'pending').length;
 

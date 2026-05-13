@@ -184,15 +184,19 @@ const createStyles = (colors: Colors) => StyleSheet.create({
 });
 
 function SuperNotifications({ onBack }: { onBack: () => void }) {
-  const items = useNotificationsStore((s) => s.byAudience.admin);
-  const markRead    = useNotificationsStore((s) => s.markRead);
-  const markAllRead = useNotificationsStore((s) => s.markAllRead);
+  const items              = useNotificationsStore((s) => s.items);
+  const fetchNotifications = useNotificationsStore((s) => s.fetchNotifications);
+  const markRead           = useNotificationsStore((s) => s.markRead);
+  const markAllRead        = useNotificationsStore((s) => s.markAllRead);
+
+  React.useEffect(() => { fetchNotifications(); }, []);
+
   return (
     <NotificationsScreen
       items={items}
       onBack={onBack}
-      onMarkAll={() => markAllRead('admin')}
-      onItemPress={(id) => markRead('admin', id)}
+      onMarkAll={async () => markAllRead()}
+      onItemPress={(id) => markRead(id)}
     />
   );
 }
