@@ -145,29 +145,15 @@ export const useApprovalsStore = create<State>((set, get) => ({
   enrolments:        [],
   loadingEnrolments: false,
 
-  fetchEnrollments: async (status) => {
+  fetchEnrollments: async (_status) => {
+    // NOTE: Backend returns 500 when status filter is passed via query param.
+    // Fetching without filter and filtering client-side by e.state field instead.
     set({ loadingEnrolments: true });
     try {
-      // Try WITHOUT status filter first — if 500 only happens with filter, it's a backend query-param naming issue
       const result = await listAdminEnrollments({ limit: 50 });
-      console.log('[DEBUG] fetchEnrollments (no filter) → total:', result.data.total, 'items:', result.data.items.length);
-      if (result.data.items.length > 0) {
-        const first = result.data.items[0] as any;
-        console.log('[DEBUG] first enrollment keys:', Object.keys(first));
-        console.log('[DEBUG] first enrollment state:', first.state, '| status:', first.status);
-      }
       set({ enrolments: result.data.items });
-    } catch (err: any) {
-      console.warn('[DEBUG] fetchEnrollments ERROR (no filter):', err?.code, err?.status, err?.message);
-      // Try with status filter as fallback
-      try {
-        const result2 = await listAdminEnrollments({ status: status ?? 'pending', limit: 50 });
-        console.log('[DEBUG] fetchEnrollments (with status filter) → total:', result2.data.total);
-        set({ enrolments: result2.data.items });
-      } catch (err2: any) {
-        console.warn('[DEBUG] fetchEnrollments ERROR (with filter):', err2?.code, err2?.status, err2?.message);
-        toast.error('Failed to load enrolments. Please try again.');
-      }
+    } catch {
+      toast.error('Failed to load enrolments. Please try again.');
     } finally {
       set({ loadingEnrolments: false });
     }

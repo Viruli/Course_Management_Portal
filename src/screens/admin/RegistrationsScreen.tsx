@@ -11,7 +11,6 @@ import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
 import { SearchField } from '../../components/SearchField';
 import { RejectReasonModal } from '../../components/RejectReasonModal';
-import { DebugPanel } from '../../components/DebugPanel';
 import { useApprovalsStore } from '../../store/approvalsStore';
 import { toast } from '../../store/uiStore';
 import type { Colors } from '../../theme/colors';
@@ -207,8 +206,6 @@ export function RegistrationsScreen() {
         onCancel={() => setRejectTarget(null)}
       />
 
-      {/* DEBUG — remove before PR */}
-      <DebugPanel tags={['registrations.list', 'registrations.approve', 'registrations.reject']} title="Registrations debug" />
     </ScreenContainer>
   );
 }
