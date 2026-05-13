@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   Pencil, GraduationCap, Award, Bell, Shield,
@@ -11,10 +11,10 @@ import { Avatar } from '../../components/Avatar';
 import { Button } from '../../components/Button';
 import { Eyebrow } from '../../components/Eyebrow';
 import { Stat } from '../../components/Stat';
-import { useAppStore } from '../../store/appStore';
 import { useProfileStore, fullName } from '../../store/profileStore';
 import { useNotificationsStore } from '../../store/notificationsStore';
 import { toast } from '../../store/uiStore';
+import { performLogout } from '../../services/auth';
 import type { Colors } from '../../theme/colors';
 import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
 
@@ -27,9 +27,10 @@ interface Props {
 export function ProfileScreen({ onTabChange, onBell, onEditProfile }: Props) {
   const colors = useColors();
   const styles = useThemedStyles(createStyles);
-  const setRole = useAppStore(s => s.setRole);
-  const profile = useProfileStore((s) => s.profiles.student);
+  const profile    = useProfileStore((s) => s.profiles.student);
+  // apiProfile not yet used in display on this branch (wired in feat/profile-mgmt-password-reset-admin)
   const unread = useNotificationsStore((s) => s.byAudience.student.filter((n) => !n.read).length);
+  const [signingOut, setSigningOut] = useState(false);
 
   const items = [
     { Icon: GraduationCap, label: 'My Learning',         sub: `${profile.enrolled ?? 0} courses · ${profile.hours ?? 0}h watched`, onPress: () => onTabChange('mine') },
@@ -39,9 +40,16 @@ export function ProfileScreen({ onTabChange, onBell, onEditProfile }: Props) {
     { Icon: LifeBuoy,      label: 'Help & support',      sub: 'Contact us, FAQ',                                                     onPress: () => toast.info('Support reachable at help@edupath.lk.') },
   ];
 
-  const handleSignOut = () => {
-    toast.success('Signed out.');
-    setRole('public');
+  const handleSignOut = async () => {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      await performLogout();
+    } catch {
+      toast.error('Sign out failed. Please try again.');
+    } finally {
+      setSigningOut(false);
+    }
   };
 
   return (
@@ -94,9 +102,10 @@ export function ProfileScreen({ onTabChange, onBell, onEditProfile }: Props) {
           ))}
         </View>
 
-        <Button variant="secondary" full size="lg" leftIcon={<LogOut size={16} color={colors.primary} />} onPress={handleSignOut}>
-          Sign out
+        <Button variant="secondary" full size="lg" leftIcon={<LogOut size={16} color={colors.primary} />} onPress={handleSignOut} disabled={signingOut}>
+          {signingOut ? 'Signing out…' : 'Sign out'}
         </Button>
+
       </ScrollView>
     </ScreenContainer>
   );
