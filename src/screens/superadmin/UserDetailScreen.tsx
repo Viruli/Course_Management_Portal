@@ -1,12 +1,13 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Modal, Pressable, ScrollView, StyleSheet, Text, View,
+  ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ArrowLeft, ShieldCheck, Shield, GraduationCap, Check,
   CircleSlash, RotateCcw, AlertTriangle, ChevronRight,
   Mail, Calendar, Activity, ArrowUpRight, ArrowDownRight,
+  BookOpen,
 } from 'lucide-react-native';
 import { ScreenContainer } from '../../components/ScreenContainer';
 import { AppBar } from '../../components/AppBar';
@@ -15,10 +16,14 @@ import { Avatar } from '../../components/Avatar';
 import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
 import { Eyebrow } from '../../components/Eyebrow';
+import { Progress } from '../../components/Progress';
 import type { Colors } from '../../theme/colors';
 import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
 import { useUsersStore } from '../../store/usersStore';
+import { useAppStore } from '../../store/appStore';
 import { toast } from '../../store/uiStore';
+import { getUserById, suspendUser, reactivateUser, ApiUserDetail } from '../../services/userManagement';
+import { ApiError } from '../../services/api';
 import type { AppRole } from '../../data/types';
 
 interface Props {
@@ -43,8 +48,65 @@ export function UserDetailScreen({ route, navigation }: Props) {
   const suspend   = useUsersStore((s) => s.suspend);
   const reinstate = useUsersStore((s) => s.reinstate);
 
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [confirmRole, setConfirmRole] = useState<AppRole | null>(null);
+  const [sheetOpen,    setSheetOpen]    = useState(false);
+  const [confirmRole,  setConfirmRole]  = useState<AppRole | null>(null);
+  const [apiUser,      setApiUser]      = useState<ApiUserDetail | null>(null);
+  const [apiLoading,   setApiLoading]   = useState(true);
+  const [suspending,   setSuspending]   = useState(false);
+  const [reactivating, setReactivating] = useState(false);
+
+  const currentRole = useAppStore((s) => s.role);
+
+  useEffect(() => {
+    let cancelled = false;
+    getUserById(uid).then((r) => {
+      if (!cancelled) { setApiUser(r.data); setApiLoading(false); }
+    }).catch(() => {
+      if (!cancelled) setApiLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [uid]);
+
+  const handleSuspend = async () => {
+    setSuspending(true);
+    try {
+      await suspendUser(uid);
+      setApiUser((prev) => prev ? { ...prev, status: 'suspended' } : prev);
+      user && suspend(uid);  // keep mock store in sync
+      toast.success(`${apiUser?.firstName ?? user?.name ?? 'User'} suspended.`);
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'ALREADY_SUSPENDED') {
+        toast.error('This account is already suspended.');
+      } else {
+        toast.error('Could not suspend. Please try again.');
+      }
+    } finally {
+      setSuspending(false);
+    }
+  };
+
+  const handleReactivate = async () => {
+    setReactivating(true);
+    try {
+      await reactivateUser(uid);
+      setApiUser((prev) => prev ? { ...prev, status: 'approved' } : prev);
+      user && reinstate(uid);  // keep mock store in sync
+      toast.success(`${apiUser?.firstName ?? user?.name ?? 'User'} reactivated.`);
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'ALREADY_ACTIVE') {
+        toast.error('This account is already active.');
+      } else {
+        toast.error('Could not reactivate. Please try again.');
+      }
+    } finally {
+      setReactivating(false);
+    }
+  };
+
+  // Resolved display values — API data takes precedence
+  const displayName   = apiUser ? `${apiUser.firstName} ${apiUser.lastName}` : (user?.name ?? '');
+  const displayEmail  = apiUser?.email ?? user?.email ?? '';
+  const displayStatus = apiUser?.status ?? (user?.status === 'pending' ? 'pending_approval' : user?.status === 'suspended' ? 'suspended' : 'approved');
 
   if (!user) {
     return (
@@ -99,9 +161,9 @@ export function UserDetailScreen({ route, navigation }: Props) {
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
         {/* Profile header */}
         <View style={styles.profile}>
-          <Avatar size={84} name={user.name} variant={user.role === 'super' ? 'lime' : user.role === 'admin' ? 'dark' : 'default'} />
-          <Text style={styles.name}>{user.name}</Text>
-          <Text style={styles.email}>{user.email}</Text>
+          <Avatar size={84} name={displayName} variant={user?.role === 'super' ? 'lime' : user?.role === 'admin' ? 'dark' : 'default'} />
+          <Text style={styles.name}>{displayName}</Text>
+          <Text style={styles.email}>{displayEmail}</Text>
           <View style={{ marginTop: 6 }}>
             <Eyebrow lime icon={<RoleIcon size={11} color={colors.primary} />}>
               {meta.label}
@@ -120,15 +182,30 @@ export function UserDetailScreen({ route, navigation }: Props) {
 
         {/* Profile fields */}
         <View style={styles.card}>
-          <DetailRow Icon={Mail}     label="Email"        value={user.email} />
-          <DetailRow Icon={Calendar} label="Joined"       value={user.joined} />
-          <DetailRow Icon={Activity} label="Last active"  value={user.lastActive} />
-          {user.role === 'student' && user.enrolled != null && (
-            <DetailRow Icon={GraduationCap} label="Courses enrolled" value={String(user.enrolled)} last />
-          )}
-          {user.role !== 'student' && user.managesCourses != null && (
-            <DetailRow Icon={Shield} label="Courses managed" value={String(user.managesCourses)} last />
-          )}
+          <DetailRow Icon={Mail}     label="Email"   value={displayEmail} />
+          <DetailRow Icon={Calendar} label="Joined"  value={user?.joined ?? '—'} />
+          <DetailRow Icon={Activity} label="Status"  value={displayStatus} last />
+
+          {/* Real enrollment history from API */}
+          {apiLoading ? (
+            <ActivityIndicator size="small" color={colors.muted} style={{ marginTop: 8 }} />
+          ) : apiUser?.enrollments?.length ? (
+            <View style={{ gap: 6, marginTop: 8 }}>
+              <Text style={styles.sectionLabel}>Enrollments</Text>
+              {apiUser.enrollments.map((e) => (
+                <View key={e.courseId} style={styles.enrollRow}>
+                  <BookOpen size={14} color={colors.bodyGreen} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.enrollTitle} numberOfLines={1}>{e.courseTitle}</Text>
+                    {e.completionPercent > 0 ? (
+                      <Progress pct={e.completionPercent} />
+                    ) : null}
+                  </View>
+                  <Text style={styles.enrollPct}>{e.completionPercent.toFixed(0)}%</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
         </View>
 
         {/* Role management */}
@@ -161,31 +238,35 @@ export function UserDetailScreen({ route, navigation }: Props) {
         {/* Account actions */}
         <View style={styles.card}>
           <Text style={styles.sectionLabel}>Account</Text>
-          {user.status === 'pending' && (
-            <Button
-              full size="lg"
-              leftIcon={<Check size={16} color={colors.white} />}
-              onPress={() => approve(user.uid)}
-            >
-              Approve account
-            </Button>
-          )}
-          {user.status === 'active' && (
+          {/* Use API-backed suspend/reactivate when apiUser is available */}
+          {(apiUser?.status === 'approved' || user?.status === 'active') && (
             <Button
               variant="secondary" full size="lg"
               leftIcon={<CircleSlash size={16} color={colors.error} />}
-              onPress={() => suspend(user.uid)}
+              disabled={suspending}
+              onPress={handleSuspend}
             >
-              Suspend account
+              {suspending ? 'Suspending…' : 'Suspend account'}
             </Button>
           )}
-          {user.status === 'suspended' && (
+          {(apiUser?.status === 'suspended' || user?.status === 'suspended') && (
             <Button
               full size="lg"
               leftIcon={<RotateCcw size={16} color={colors.white} />}
-              onPress={() => reinstate(user.uid)}
+              disabled={reactivating}
+              onPress={handleReactivate}
             >
-              Reinstate account
+              {reactivating ? 'Reactivating…' : 'Reinstate account'}
+            </Button>
+          )}
+          {/* Pending approval — keep mock approve for now */}
+          {user?.status === 'pending' && (
+            <Button
+              full size="lg"
+              leftIcon={<Check size={16} color={colors.white} />}
+              onPress={() => user && approve(user.uid)}
+            >
+              Approve account
             </Button>
           )}
         </View>
@@ -344,6 +425,9 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     borderColor: colors.stroke, borderWidth: 1,
   },
   sectionLabel: { fontSize: 11, fontWeight: '700', color: colors.bodyGreen, letterSpacing: 0.6, textTransform: 'uppercase' },
+  enrollRow:    { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  enrollTitle:  { fontSize: 12, color: colors.primary, flex: 1 },
+  enrollPct:    { fontSize: 11, color: colors.bodyGreen, fontWeight: '600' },
 
   detailRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
   detailRowBorder: { borderBottomColor: colors.stroke2, borderBottomWidth: StyleSheet.hairlineWidth },
