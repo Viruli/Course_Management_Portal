@@ -25,8 +25,8 @@ export function SuperQueueScreen() {
 
   const [tab, setTab] = useState<'reg' | 'enr'>('reg');
 
-  const pendingReg = useMemo(() => registrations.filter((r) => r.status === 'pending'), [registrations]);
-  const pendingEnr = useMemo(() => enrolments.filter((e) => e.status === 'pending'), [enrolments]);
+  const pendingReg = useMemo(() => registrations.filter((r) => r.state === 'pending'), [registrations]);
+  const pendingEnr = useMemo(() => enrolments.filter((e) => e.state === 'pending'), [enrolments]);
 
   return (
     <ScreenContainer edges={['top']} bg={colors.surface2}>
@@ -51,38 +51,41 @@ export function SuperQueueScreen() {
         {tab === 'reg' && (
           pendingReg.length === 0
             ? <EmptyState icon="CheckCheck" title="No sign-ups pending" body="New registration requests will appear here." />
-            : pendingReg.map((r) => (
-              <View key={r.id} style={styles.card}>
-                <View style={styles.head}>
-                  <Avatar size={40} name={r.name} variant="dark" />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.name}>{r.name}</Text>
-                    <Text style={styles.email}>{r.email}</Text>
+            : pendingReg.map((r) => {
+              const name = `${r.firstName} ${r.lastName}`;
+              return (
+                <View key={r.id} style={styles.card}>
+                  <View style={styles.head}>
+                    <Avatar size={40} name={name} variant="dark" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.name}>{name}</Text>
+                      <Text style={styles.email}>{r.email}</Text>
+                    </View>
+                    <Text style={styles.when}>{new Date(r.submittedAt).toLocaleDateString()}</Text>
                   </View>
-                  <Text style={styles.when}>{r.when}</Text>
+                  <View style={styles.actions}>
+                    <View style={{ flex: 1 }}>
+                      <Button
+                        variant="secondary" size="sm" full
+                        leftIcon={<X size={13} color={colors.primary} />}
+                        onPress={() => { rejectReg(r.id); toast.info(`Rejected ${name}'s registration.`); }}
+                      >
+                        Reject
+                      </Button>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Button
+                        size="sm" full
+                        leftIcon={<Check size={13} color={colors.white} />}
+                        onPress={() => { approveReg(r.id); toast.success(`Approved ${name}'s registration.`); }}
+                      >
+                        Approve
+                      </Button>
+                    </View>
+                  </View>
                 </View>
-                <View style={styles.actions}>
-                  <View style={{ flex: 1 }}>
-                    <Button
-                      variant="secondary" size="sm" full
-                      leftIcon={<X size={13} color={colors.primary} />}
-                      onPress={() => { rejectReg(r.id); toast.info(`Rejected ${r.name}'s registration.`); }}
-                    >
-                      Reject
-                    </Button>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Button
-                      size="sm" full
-                      leftIcon={<Check size={13} color={colors.white} />}
-                      onPress={() => { approveReg(r.id); toast.success(`Approved ${r.name}'s registration.`); }}
-                    >
-                      Approve
-                    </Button>
-                  </View>
-                </View>
-              </View>
-            ))
+              );
+            })
         )}
 
         {tab === 'enr' && (
@@ -91,19 +94,19 @@ export function SuperQueueScreen() {
             : pendingEnr.map((e) => (
               <View key={e.id} style={styles.card}>
                 <View style={styles.head}>
-                  <Avatar size={36} name={e.name} variant="dark" />
+                  <Avatar size={36} name={e.studentName} variant="dark" />
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.name}>{e.name}</Text>
-                    <Text style={styles.email} numberOfLines={1}>→ {e.course}</Text>
+                    <Text style={styles.name}>{e.studentName}</Text>
+                    <Text style={styles.email} numberOfLines={1}>→ {e.courseTitle}</Text>
                   </View>
-                  <Text style={styles.when}>{e.when}</Text>
+                  <Text style={styles.when}>{new Date(e.submittedAt).toLocaleDateString()}</Text>
                 </View>
                 <View style={styles.actions}>
                   <View style={{ flex: 1 }}>
                     <Button
                       variant="secondary" size="sm" full
                       leftIcon={<X size={13} color={colors.primary} />}
-                      onPress={() => { rejectEnr(e.id); toast.info(`Rejected ${e.name}'s enrolment.`); }}
+                      onPress={() => { rejectEnr(e.id); toast.info(`Rejected ${e.studentName}'s enrolment.`); }}
                     >
                       Reject
                     </Button>
@@ -112,7 +115,7 @@ export function SuperQueueScreen() {
                     <Button
                       size="sm" full
                       leftIcon={<Check size={13} color={colors.white} />}
-                      onPress={() => { approveEnr(e.id); toast.success(`Approved ${e.name} → ${e.course}.`); }}
+                      onPress={() => { approveEnr(e.id); toast.success(`Approved ${e.studentName} → ${e.courseTitle}.`); }}
                     >
                       Approve
                     </Button>

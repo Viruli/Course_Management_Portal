@@ -39,8 +39,8 @@ const baseTabs: { id: TabId; label: string; Icon: any }[] = [
 function BottomNav({ active, onChange }: { active: TabId; onChange: (id: TabId) => void }) {
   const colors = useColors();
   const styles = useThemedStyles(createStyles);
-  const regCount = useApprovalsStore((s) => s.registrations.filter((r) => r.status === 'pending').length);
-  const enrCount = useApprovalsStore((s) => s.enrolments.filter((e) => e.status === 'pending').length);
+  const regCount = useApprovalsStore((s) => s.registrations.filter((r) => r.state === 'pending').length);
+  const enrCount = useApprovalsStore((s) => s.enrolments.filter((e) => e.state === 'pending').length);
   const badgeFor = (id: TabId) =>
     id === 'registrations' ? regCount :
     id === 'enrolments'    ? enrCount : 0;
