@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View,
+  ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import {
-  Filter, ClipboardList, CheckCheck, BookOpen, Check, X, XCircle, ChevronDown,
+  Filter, ClipboardList, CheckCheck, BookOpen, Check, X, XCircle, ChevronDown, Search,
 } from 'lucide-react-native';
 import { ScreenContainer } from '../../components/ScreenContainer';
 import { AppBar } from '../../components/AppBar';
@@ -32,8 +32,9 @@ export function EnrolmentsScreen() {
 
   const [processingId,    setProcessingId]    = useState<string | null>(null);
   const [rejectTarget,    setRejectTarget]     = useState<{ id: string; name: string } | null>(null);
-  const [filterModalOpen, setFilterModalOpen] = useState(false);
-  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
+  const [filterModalOpen,   setFilterModalOpen]   = useState(false);
+  const [selectedCourseId,  setSelectedCourseId]  = useState<string | null>(null);
+  const [courseSearch,      setCourseSearch]       = useState('');
 
   useEffect(() => {
     fetchEnrollments('pending');
@@ -205,54 +206,86 @@ export function EnrolmentsScreen() {
         transparent
         animationType="slide"
         visible={filterModalOpen}
-        onRequestClose={() => setFilterModalOpen(false)}
+        onRequestClose={() => { setFilterModalOpen(false); setCourseSearch(''); }}
       >
-        <Pressable style={styles.modalBackdrop} onPress={() => setFilterModalOpen(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => { setFilterModalOpen(false); setCourseSearch(''); }}>
           <Pressable style={styles.modalSheet} onPress={() => {}}>
+
+            {/* Header */}
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Filter by course</Text>
-              <IconBtn onPress={() => setFilterModalOpen(false)}>
+              <IconBtn onPress={() => { setFilterModalOpen(false); setCourseSearch(''); }}>
                 <X size={20} color={colors.primary} />
               </IconBtn>
+            </View>
+
+            {/* Search input */}
+            <View style={styles.searchRow}>
+              <Search size={16} color={colors.muted} />
+              <TextInput
+                style={styles.searchInput}
+                value={courseSearch}
+                onChangeText={setCourseSearch}
+                placeholder="Search course name…"
+                placeholderTextColor={colors.muted}
+                autoFocus
+                clearButtonMode="while-editing"
+              />
+              {courseSearch.length > 0 ? (
+                <Pressable onPress={() => setCourseSearch('')} hitSlop={8}>
+                  <XCircle size={16} color={colors.muted} />
+                </Pressable>
+              ) : null}
             </View>
 
             {courses.length === 0 ? (
               <Text style={styles.noCoursesText}>No courses with pending enrolments.</Text>
             ) : (
-              <>
-                {/* All courses option */}
-                <Pressable
-                  style={[styles.courseOption, !selectedCourseId && styles.courseOptionActive]}
-                  onPress={() => { setSelectedCourseId(null); setFilterModalOpen(false); }}
-                >
-                  <Text style={[styles.courseOptionText, !selectedCourseId && styles.courseOptionTextActive]}>
-                    All courses
-                  </Text>
-                  <Text style={styles.courseOptionCount}>{pending.length} requests</Text>
-                  {!selectedCourseId ? <Check size={16} color={colors.accent} /> : null}
-                </Pressable>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {/* "All courses" option — only show when search is empty */}
+                {!courseSearch ? (
+                  <Pressable
+                    style={[styles.courseOption, !selectedCourseId && styles.courseOptionActive]}
+                    onPress={() => { setSelectedCourseId(null); setFilterModalOpen(false); setCourseSearch(''); }}
+                  >
+                    <Text style={[styles.courseOptionText, !selectedCourseId && styles.courseOptionTextActive]}>
+                      All courses
+                    </Text>
+                    <Text style={styles.courseOptionCount}>{pending.length} requests</Text>
+                    {!selectedCourseId ? <Check size={16} color={colors.accent} /> : null}
+                  </Pressable>
+                ) : null}
 
-                {courses.map((c) => {
-                  const count  = pending.filter((e) => e.courseId === c.id).length;
-                  const active = selectedCourseId === c.id;
-                  return (
-                    <Pressable
-                      key={c.id}
-                      style={[styles.courseOption, active && styles.courseOptionActive]}
-                      onPress={() => { setSelectedCourseId(c.id); setFilterModalOpen(false); }}
-                    >
-                      <View style={styles.courseOptionIcon}>
-                        <BookOpen size={14} color={colors.primary} />
-                      </View>
-                      <Text style={[styles.courseOptionText, active && styles.courseOptionTextActive]} numberOfLines={1}>
-                        {c.title}
-                      </Text>
-                      <Text style={styles.courseOptionCount}>{count}</Text>
-                      {active ? <Check size={16} color={colors.accent} /> : <ChevronDown size={14} color={colors.muted} />}
-                    </Pressable>
-                  );
-                })}
-              </>
+                {/* Filtered course list */}
+                {courses
+                  .filter((c) => !courseSearch || c.title.toLowerCase().includes(courseSearch.toLowerCase()))
+                  .map((c) => {
+                    const count  = pending.filter((e) => e.courseId === c.id).length;
+                    const active = selectedCourseId === c.id;
+                    return (
+                      <Pressable
+                        key={c.id}
+                        style={[styles.courseOption, active && styles.courseOptionActive]}
+                        onPress={() => { setSelectedCourseId(c.id); setFilterModalOpen(false); setCourseSearch(''); }}
+                      >
+                        <View style={styles.courseOptionIcon}>
+                          <BookOpen size={14} color={colors.primary} />
+                        </View>
+                        <Text style={[styles.courseOptionText, active && styles.courseOptionTextActive]} numberOfLines={1}>
+                          {c.title}
+                        </Text>
+                        <Text style={styles.courseOptionCount}>{count}</Text>
+                        {active ? <Check size={16} color={colors.accent} /> : null}
+                      </Pressable>
+                    );
+                  })
+                }
+
+                {/* No results for search */}
+                {courseSearch && courses.filter((c) => c.title.toLowerCase().includes(courseSearch.toLowerCase())).length === 0 ? (
+                  <Text style={styles.noCoursesText}>No courses match "{courseSearch}"</Text>
+                ) : null}
+              </ScrollView>
             )}
           </Pressable>
         </Pressable>
@@ -315,7 +348,15 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     borderBottomColor: colors.stroke2, borderBottomWidth: 1,
   },
   modalTitle:    { fontSize: 17, fontWeight: '700', color: colors.primary },
-  noCoursesText: { padding: 20, fontSize: 14, color: colors.bodyGreen, textAlign: 'center' },
+  noCoursesText: { padding: 20, fontSize: 14, color: colors.bodyGreen, textAlign: 'center' as const },
+
+  searchRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    marginHorizontal: 16, marginBottom: 8, marginTop: 4,
+    paddingHorizontal: 12, paddingVertical: 10,
+    backgroundColor: colors.lightGray, borderRadius: 12,
+  },
+  searchInput: { flex: 1, fontSize: 14, color: colors.primary, padding: 0 },
 
   courseOption: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
