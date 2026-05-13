@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import {
   ChevronDown, Cast, MoreVertical, Play, Pause, BookOpen, Clock, Check,
   ChevronLeft, ChevronRight, Save, Download, FileText, FilePen, Video,
@@ -10,24 +10,89 @@ import { Tabs } from '../../components/Tabs';
 import { Button } from '../../components/Button';
 import { LESSON } from '../../data/mock';
 import { toast } from '../../store/uiStore';
+import { markSubjectComplete, updateLastAccessed } from '../../services/progress';
+import { getAttachmentDownloadUrl } from '../../services/attachments';
+import { ApiError } from '../../services/api';
 import type { Colors } from '../../theme/colors';
 import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
 
 interface Props {
+  route?: {
+    params?: {
+      subjectId?: string;
+      courseId?: string;
+      semesterId?: string;
+    }
+  };
   onBack: () => void;
   onComplete: () => void;
 }
 
 const matIcons: Record<string, any> = { FileText, FilePen, Video };
 
-export function LessonPlayerScreen({ onBack, onComplete }: Props) {
+export function LessonPlayerScreen({ route, onBack, onComplete }: Props) {
   const colors = useColors();
   const styles = useThemedStyles(createStyles);
   const [tab, setTab] = useState('about');
   const [playing, setPlaying] = useState(true);
+  const [marking, setMarking] = useState(false);
+  const [completed, setCompleted] = useState(false);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [notes, setNotes] = useState(
     '• Slope = rise / run\n• y-intercept is where the line crosses the y-axis\n• Practice example 3 again before quiz.'
   );
+
+  const subjectId  = route?.params?.subjectId;
+  const courseId   = route?.params?.courseId;
+  const semesterId = route?.params?.semesterId;
+
+  // Fire-and-forget: record that the student accessed this subject
+  useEffect(() => {
+    if (!subjectId || !courseId || !semesterId) return;
+    updateLastAccessed(subjectId, { courseId, semesterId }).catch(() => {});
+  }, [subjectId, courseId, semesterId]);
+
+  const handleMarkComplete = async () => {
+    if (!subjectId || !courseId || !semesterId || marking || completed) return;
+    setMarking(true);
+    try {
+      await markSubjectComplete(subjectId, { courseId, semesterId });
+      setCompleted(true);
+      toast.success('Subject marked complete! ✓');
+      onComplete();
+    } catch (err) {
+      if (err instanceof ApiError && (err.code === 'NETWORK_ERROR' || err.code === 'TIMEOUT')) {
+        toast.error("Couldn't reach the server. Check your connection.");
+      } else {
+        toast.error("Couldn't mark complete. Try again.");
+      }
+    } finally {
+      setMarking(false);
+    }
+  };
+
+  const handleDownloadAttachment = async (attachmentId: string) => {
+    if (downloadingId) return;
+    setDownloadingId(attachmentId);
+    try {
+      const result = await getAttachmentDownloadUrl(attachmentId);
+      await Linking.openURL(result.data.downloadUrl);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.code === 'ENROLLMENT_REQUIRED') {
+          toast.error('You need an approved enrolment to download attachments.');
+        } else if (err.code === 'NETWORK_ERROR' || err.code === 'TIMEOUT') {
+          toast.error('Download failed. Check your connection.');
+        } else {
+          toast.error('Download failed. Please try again.');
+        }
+      } else {
+        toast.error("Couldn't open the download link.");
+      }
+    } finally {
+      setDownloadingId(null);
+    }
+  };
 
   return (
     <ScreenContainer edges={['top']}>
@@ -101,7 +166,13 @@ export function LessonPlayerScreen({ onBack, onComplete }: Props) {
                     <Text style={styles.matName}>{m.name}</Text>
                     <Text style={styles.matSize}>{m.size}</Text>
                   </View>
-                  <IconBtn onPress={() => toast.success(`Downloading ${m.name}.`)}><Download size={16} color={colors.primary} /></IconBtn>
+                  <Pressable
+                    onPress={() => handleDownloadAttachment(m.name)}
+                    style={{ padding: 6 }}
+                    disabled={downloadingId === m.name}
+                  >
+                    <Download size={16} color={downloadingId === m.name ? colors.muted : colors.primary} />
+                  </Pressable>
                 </View>
               );
             })}
@@ -125,7 +196,14 @@ export function LessonPlayerScreen({ onBack, onComplete }: Props) {
       <View style={styles.stickyBar}>
         <Button variant="secondary" size="lg" leftIcon={<ChevronLeft size={16} color={colors.primary} />} onPress={() => toast.info('Previous lesson.')} />
         <View style={{ flex: 1 }}>
-          <Button size="lg" full leftIcon={<Check size={16} color={colors.white} />} onPress={() => { toast.success('Lesson marked complete.'); onComplete(); }}>Mark complete</Button>
+          <Button
+            size="lg" full
+            leftIcon={<Check size={16} color={colors.white} />}
+            disabled={marking || completed || !subjectId}
+            onPress={handleMarkComplete}
+          >
+            {completed ? '✓ Completed' : marking ? 'Saving…' : 'Mark complete'}
+          </Button>
         </View>
         <Button variant="secondary" size="lg" leftIcon={<ChevronRight size={16} color={colors.primary} />} onPress={() => toast.info('Next lesson.')} />
       </View>

@@ -15,6 +15,7 @@ import { Button } from '../../components/Button';
 import { LESSON, SAMPLE_BUILDER_COURSE } from '../../data/mock';
 import { toast } from '../../store/uiStore';
 import { getCourseById, ApiCourseDetail } from '../../services/courses';
+import { enrollInCourse, listMyEnrollments, ApiEnrollment } from '../../services/studentEnrollments';
 import { ApiError } from '../../services/api';
 import type { Colors } from '../../theme/colors';
 import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
@@ -33,7 +34,9 @@ export function CourseDetailScreen({ courseId, course, onBack, onPlay, onEnrol }
   const styles = useThemedStyles(createStyles);
   const [tab, setTab] = useState('overview');
   const [bookmarked, setBookmarked] = useState(false);
-  const [apiCourse, setApiCourse] = useState<ApiCourseDetail | null>(null);
+  const [apiCourse,  setApiCourse]  = useState<ApiCourseDetail | null>(null);
+  const [enrolment,  setEnrolment]  = useState<ApiEnrollment | null>(null);
+  const [enrolling,  setEnrolling]  = useState(false);
 
   useEffect(() => {
     if (!courseId) return;
@@ -52,9 +55,53 @@ export function CourseDetailScreen({ courseId, course, onBack, onPlay, onEnrol }
     return () => { cancelled = true; };
   }, [courseId]);
 
+  // Fetch real enrollment state for this course
+  useEffect(() => {
+    if (!courseId) return;
+    let cancelled = false;
+    listMyEnrollments().then((r) => {
+      if (!cancelled) {
+        const match = r.data.items.find((e) => e.courseId === courseId);
+        if (match) setEnrolment(match);
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [courseId]);
+
   // Resolved display values — API data takes precedence over mock
-  const title     = apiCourse?.title       ?? course?.title       ?? '';
-  const enrolled  = (course?.progress ?? 0) > 0;
+  const title   = apiCourse?.title ?? course?.title ?? '';
+  const enrolled = enrolment?.state === 'approved' || (course?.progress ?? 0) > 0;
+
+  const handleEnrol = async () => {
+    if (!courseId || enrolling) return;
+    setEnrolling(true);
+    try {
+      const result = await enrollInCourse(courseId);
+      setEnrolment(result.data);
+      onEnrol();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.code === 'ENROLLMENT_PENDING' || err.code === 'ALREADY_ENROLLED') {
+          listMyEnrollments().then((r) => {
+            const match = r.data.items.find((e) => e.courseId === courseId);
+            if (match) setEnrolment(match);
+          }).catch(() => {});
+        } else if (err.code === 'COOLOFF_ACTIVE') {
+          toast.error('You must wait before re-enrolling after a rejection.');
+        } else if (err.code === 'COURSE_NOT_FOUND') {
+          toast.error('This course is not currently open for enrolment.');
+        } else if (err.code === 'NETWORK_ERROR' || err.code === 'TIMEOUT') {
+          toast.error("Couldn't reach the server. Check your connection.");
+        } else {
+          toast.error(err.message);
+        }
+      } else {
+        toast.error('Something went wrong. Please try again.');
+      }
+    } finally {
+      setEnrolling(false);
+    }
+  };
 
   const handleBookmark = () => {
     setBookmarked((b) => {
@@ -219,16 +266,30 @@ export function CourseDetailScreen({ courseId, course, onBack, onPlay, onEnrol }
         <View style={{ flex: 1 }}>
           <Text style={styles.barLabelTop}>Course access</Text>
           <Text style={styles.barValue}>
-            {enrolled ? `Enrolled · ${course?.progress ?? 0}%` : 'Free with approval'}
+            {enrolment?.state === 'approved'
+              ? 'Enrolled ✓'
+              : enrolment?.state === 'pending'
+              ? 'Awaiting approval'
+              : (course?.progress ?? 0) > 0
+              ? `Enrolled · ${course?.progress ?? 0}%`
+              : 'Free with approval'}
           </Text>
         </View>
         {enrolled ? (
-          <Button size="lg" leftIcon={<Play size={16} color={colors.white} />} onPress={onPlay}>Resume</Button>
+          <Button size="lg" leftIcon={<Play size={16} color={colors.white} />} onPress={onPlay}>
+            Continue learning
+          </Button>
+        ) : enrolment?.state === 'pending' ? (
+          <Button size="lg" variant="secondary" disabled>Pending approval</Button>
         ) : (
-          <Button size="lg" leftIcon={<Plus size={16} color={colors.white} />} onPress={() => {
-            toast.success(`Enrolment request submitted for "${title}".`);
-            onEnrol();
-          }}>Request enrol</Button>
+          <Button
+            size="lg"
+            leftIcon={<Plus size={16} color={colors.white} />}
+            disabled={enrolling}
+            onPress={handleEnrol}
+          >
+            {enrolling ? 'Requesting…' : 'Request enrol'}
+          </Button>
         )}
       </View>
     </ScreenContainer>

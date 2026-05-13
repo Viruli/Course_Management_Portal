@@ -15,6 +15,11 @@ export interface ApiAttachment {
   createdAt:   string;
 }
 
+export interface AttachmentDownloadUrl {
+  downloadUrl: string;
+  expiresAt:   string;
+}
+
 // Accepted MIME types per API spec §7.1
 const ACCEPTED_TYPES = [
   'application/pdf',
@@ -44,7 +49,6 @@ export async function uploadAttachment(
   const url   = `${BASE_URL}/subjects/${subjectId}/attachments`;
 
   const form = new FormData();
-  // React Native accepts this shape for file entries in FormData
   form.append('file', { uri: file.uri, name: file.name, type: file.type } as any);
 
   const startedAt = Date.now();
@@ -81,5 +85,19 @@ export function deleteAttachment(id: string): Promise<ApiResult<undefined>> {
   return apiFetch<undefined>(`/attachments/${id}`, {
     method: 'DELETE',
     tag:    'attachments.delete',
+  });
+}
+
+/**
+ * Get a short-lived signed download URL for an attachment.
+ * The URL expires in 15 minutes — call Linking.openURL immediately.
+ * Only students with an approved enrollment in the parent course may call this.
+ */
+export function getAttachmentDownloadUrl(
+  attachmentId: string,
+): Promise<ApiResult<AttachmentDownloadUrl>> {
+  return apiFetch<AttachmentDownloadUrl>(`/attachments/${attachmentId}/download-url`, {
+    method: 'GET',
+    tag:    'attachments.downloadUrl',
   });
 }
