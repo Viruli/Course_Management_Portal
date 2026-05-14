@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
-  Download, CheckCircle, User, Key, BookOpen, Activity, ShieldAlert,
+  Download, CheckCircle, User, Key, BookOpen, Activity,
 } from 'lucide-react-native';
 import { ScreenContainer } from '../../components/ScreenContainer';
 import { AppBar } from '../../components/AppBar';
 import { IconBtn } from '../../components/IconBtn';
 import { Pill } from '../../components/Pill';
 import { EmptyState } from '../../components/EmptyState';
+import { DebugPanel } from '../../components/DebugPanel';
 import { getAuditLog, ApiAuditEntry } from '../../services/auditLog';
 import { ApiError } from '../../services/api';
 import { toast } from '../../store/uiStore';
@@ -61,22 +62,24 @@ export function AuditScreen() {
 
   const [entries,  setEntries]  = useState<ApiAuditEntry[]>([]);
   const [loading,  setLoading]  = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [filter,   setFilter]   = useState<FilterId>('all');
 
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
       setLoading(true);
+      setErrorMsg(null);
       try {
         const result = await getAuditLog({ category: filterToCategory(filter) });
-        if (!cancelled) setEntries(result.data.items);
+        if (!cancelled) setEntries(result.data.items ?? []);
       } catch (err) {
         if (!cancelled) {
-          if (err instanceof ApiError && (err.code === 'NETWORK_ERROR' || err.code === 'TIMEOUT')) {
-            toast.error("Couldn't reach the server. Check your connection.");
-          } else {
-            toast.error('Failed to load audit log.');
-          }
+          const msg = err instanceof ApiError
+            ? `[${err.code}] ${err.message}${err.status ? ` (HTTP ${err.status})` : ''}`
+            : String(err);
+          setErrorMsg(msg);
+          toast.error('Failed to load audit log — see details below.');
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -107,6 +110,11 @@ export function AuditScreen() {
 
         {loading ? (
           <ActivityIndicator color={colors.primary} style={{ marginTop: 32 }} />
+        ) : errorMsg ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorTitle}>Failed to load audit log</Text>
+            <Text style={styles.errorDetail}>{errorMsg}</Text>
+          </View>
         ) : entries.length === 0 ? (
           <EmptyState icon="Activity" title="No log entries" body="Platform events will appear here." />
         ) : (
@@ -131,6 +139,8 @@ export function AuditScreen() {
             })}
           </View>
         )}
+
+        <DebugPanel tags={['audit.list']} title="Audit log debug" />
       </ScrollView>
     </ScreenContainer>
   );
@@ -150,4 +160,12 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   title:      { fontSize: 13, fontWeight: '700', color: colors.primary },
   target:     { fontSize: 12, color: colors.bodyGreen, marginTop: 2 },
   foot:       { fontSize: 11, color: colors.muted, marginTop: 2 },
+  errorBox: {
+    padding: 16, borderRadius: 14,
+    backgroundColor: colors.errorBg,
+    borderColor: colors.error, borderWidth: 1,
+    gap: 6,
+  },
+  errorTitle:  { fontSize: 13, fontWeight: '700', color: colors.error },
+  errorDetail: { fontSize: 12, color: colors.error, lineHeight: 17, fontFamily: 'monospace' as any },
 });

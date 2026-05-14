@@ -33,12 +33,11 @@ export function MoreScreen({ role, onOpenAudit, onOpenCourses, onOpenStudents, o
   const [signingOut, setSigningOut] = useState(false);
 
   const baseItems = [
-    { Icon: BookOpen,  label: 'Courses',       sub: '18 published · 3 drafts',     onPress: onOpenCourses },
-    { Icon: History,   label: 'Audit log',     sub: 'Recent platform activity',    onPress: onOpenAudit },
-    { Icon: Users,     label: 'Users',          sub: 'View and manage users',       onPress: onOpenStudents ?? (() => toast.info('User directory coming soon.')) },
-    { Icon: Megaphone, label: 'Announcements', sub: 'Send platform updates',       onPress: () => toast.info('Announcements composer coming soon.') },
-    { Icon: Settings,  label: 'Settings',      sub: 'Account, security, prefs',    onPress: onEditProfile },
-    { Icon: LifeBuoy,  label: 'Help & support', sub: 'Contact us, FAQ',            onPress: () => toast.info('Support reachable at help@edupath.lk.') },
+    { Icon: BookOpen,  label: 'Courses',        sub: '18 published · 3 drafts',   onPress: onOpenCourses },
+    { Icon: Users,     label: 'Users',           sub: 'View and manage users',     onPress: onOpenStudents ?? (() => toast.info('User directory coming soon.')) },
+    { Icon: Megaphone, label: 'Announcements',  sub: 'Send platform updates',     onPress: () => toast.info('Announcements composer coming soon.') },
+    { Icon: Settings,  label: 'Settings',       sub: 'Account, security, prefs',  onPress: onEditProfile },
+    { Icon: LifeBuoy,  label: 'Help & support', sub: 'Contact us, FAQ',           onPress: () => toast.info('Support reachable at help@edupath.lk.') },
   ];
 
   const handleSignOut = async () => {
@@ -54,7 +53,11 @@ export function MoreScreen({ role, onOpenAudit, onOpenCourses, onOpenStudents, o
   };
 
   const items = isSuper
-    ? [{ Icon: ShieldCheck, label: 'Administrators', sub: '5 admins · 2 pending', onPress: onOpenAdmins }, ...baseItems]
+    ? [
+        { Icon: ShieldCheck, label: 'Administrators', sub: 'Manage admin accounts',    onPress: onOpenAdmins },
+        { Icon: History,     label: 'Audit log',      sub: 'Recent platform activity', onPress: onOpenAudit },
+        ...baseItems,
+      ]
     : baseItems;
 
   return (
