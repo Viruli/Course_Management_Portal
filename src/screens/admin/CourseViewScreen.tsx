@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ArrowLeft, MoreVertical, Pencil, Trash2, AlertTriangle,
   ChevronDown, ChevronUp, GraduationCap, BookOpen,
-  Layers, PlayCircle, CheckCircle,
+  Layers, PlayCircle, CheckCircle, ChevronRight,
 } from 'lucide-react-native';
 import { ScreenContainer } from '../../components/ScreenContainer';
 import { AppBar } from '../../components/AppBar';
@@ -34,13 +34,14 @@ type SubjectWithLessons = ApiSemesterInTree['subjects'][number] & { lessons: Api
 type SemesterRow        = Omit<ApiSemesterInTree, 'subjects'> & { subjects: SubjectWithLessons[] };
 
 interface Props {
-  courseId?: string;
-  course?: any;          // legacy — ignored when courseId is present
+  courseId?:  string;
+  course?:    any;       // legacy — ignored when courseId is present
+  navigation: any;       // stack navigator for subject/lesson detail pushes
   onBack: () => void;
   onEdit: (courseId: string) => void;
 }
 
-export function CourseViewScreen({ courseId, onBack, onEdit }: Props) {
+export function CourseViewScreen({ courseId, navigation, onBack, onEdit }: Props) {
   const colors = useColors();
   const styles = useThemedStyles(createStyles);
 
@@ -304,7 +305,7 @@ export function CourseViewScreen({ courseId, onBack, onEdit }: Props) {
               </View>
             ) : null}
             {semesters.length > 0 ? (
-              <CurriculumTree semesters={semesters} />
+              <CurriculumTree semesters={semesters} navigation={navigation} />
             ) : (detail?.semesterCount ?? 0) > 0 ? (
               <View style={styles.cacheBanner}>
                 <Text style={styles.cacheBannerText}>
@@ -417,7 +418,7 @@ function StatTile({ Icon, label, value, wide }: { Icon: any; label: string; valu
   );
 }
 
-function CurriculumTree({ semesters }: { semesters: SemesterRow[] }) {
+function CurriculumTree({ semesters, navigation }: { semesters: SemesterRow[]; navigation: any }) {
   const colors = useColors();
   const styles = useThemedStyles(createStyles);
   const [open, setOpen] = useState<Record<string, boolean>>(() => {
@@ -425,6 +426,7 @@ function CurriculumTree({ semesters }: { semesters: SemesterRow[] }) {
     if (semesters[0]) init[semesters[0].id] = true;
     return init;
   });
+
   return (
     <View style={{ gap: 10 }}>
       {semesters.map((sem) => {
@@ -455,35 +457,38 @@ function CurriculumTree({ semesters }: { semesters: SemesterRow[] }) {
                   <Text style={styles.empty}>No subjects yet.</Text>
                 ) : (
                   sem.subjects.map((sub) => (
-                    <View key={sub.id} style={styles.curSubject}>
+                    // Tap subject → SubjectDetailScreen
+                    <Pressable
+                      key={sub.id}
+                      style={styles.curSubject}
+                      onPress={() => navigation.navigate('SubjectDetail', {
+                        semesterTitle: sem.title,
+                        subject: { ...sub },
+                      })}
+                    >
                       <View style={styles.curSubjectHead}>
                         <View style={styles.curSubjectIco}>
                           <BookOpen size={13} color={colors.primary} />
                         </View>
-                        <Text style={styles.curSubjectTitle} numberOfLines={2}>{sub.title}</Text>
-                        <Text style={styles.curSubjectCount}>
-                          {sub.lessons.length} lesson{sub.lessons.length === 1 ? '' : 's'}
-                        </Text>
-                      </View>
-                      {sub.lessons.map((lesson, i) => (
-                        <View key={lesson.id} style={styles.curLesson}>
-                          <View style={styles.curLessonIco}>
-                            <Text style={styles.curLessonNum}>{i + 1}</Text>
-                          </View>
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.curLessonTitle} numberOfLines={1}>
-                              {lesson.title || 'Untitled lesson'}
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.curSubjectTitle} numberOfLines={1}>{sub.title}</Text>
+                          {(sub as any).description ? (
+                            <Text style={styles.curSubjectDesc} numberOfLines={1}>
+                              {(sub as any).description}
                             </Text>
-                            {lesson.url ? (
-                              <View style={styles.curLessonMeta}>
-                                <PlayCircle size={10} color={colors.error} />
-                                <Text style={styles.metaChipText}>Video</Text>
-                              </View>
-                            ) : null}
-                          </View>
+                          ) : null}
                         </View>
-                      ))}
-                    </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={styles.curSubjectCount}>
+                            {sub.lessons.length} lesson{sub.lessons.length === 1 ? '' : 's'}
+                          </Text>
+                          {(sub as any).youtubeVideoId ? (
+                            <PlayCircle size={12} color={colors.error} />
+                          ) : null}
+                          <ChevronRight size={14} color="rgba(255,255,255,0.5)" />
+                        </View>
+                      </View>
+                    </Pressable>
                   ))
                 )}
               </View>
@@ -576,6 +581,8 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   curLessonTitle: { fontSize: 12, fontWeight: '600', color: colors.primary, flex: 1 },
   curLessonMeta:  { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
   metaChipText:   { fontSize: 10, color: colors.bodyGreen },
+
+  curSubjectDesc: { fontSize: 11, color: colors.bodyGreen, marginTop: 2 },
 
   menuBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   menuPanel: {

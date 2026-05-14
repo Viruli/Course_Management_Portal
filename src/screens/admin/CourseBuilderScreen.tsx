@@ -51,12 +51,12 @@ export function CourseBuilderScreen({ route, navigation }: Props) {
   const [publishing, setPublishing] = useState(false);
   const [hydrating,  setHydrating]  = useState(false);
 
-  // Hydrate from API when navigated to with a courseId that's different from
-  // what the store currently holds (i.e. user tapped Edit on an existing course).
+  // Hydrate from API whenever the screen is opened in edit mode (route params
+  // contain courseId). Always re-fetches so the builder shows the latest
+  // semesters/subjects/lessons from the backend rather than stale session data.
   useEffect(() => {
     const paramCourseId = route?.params?.courseId;
     if (!paramCourseId) return;
-    if (paramCourseId === courseId) return;  // already loaded
     let cancelled = false;
     setHydrating(true);
 

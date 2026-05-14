@@ -13,6 +13,8 @@ import { UsersScreen } from '../screens/superadmin/UsersScreen';
 import { UserDetailScreen } from '../screens/superadmin/UserDetailScreen';
 import { CoursesScreen } from '../screens/admin/CoursesScreen';
 import { CourseBuilderScreen } from '../screens/admin/CourseBuilderScreen';
+import { SubjectDetailScreen } from '../screens/admin/SubjectDetailScreen';
+import { LessonDetailScreen } from '../screens/admin/LessonDetailScreen';
 import { CourseViewScreen } from '../screens/admin/CourseViewScreen';
 import { LessonEditorScreen } from '../screens/admin/LessonEditorScreen';
 import { AuditScreen } from '../screens/admin/AuditScreen';
@@ -141,6 +143,7 @@ export function SuperAdminTabs() {
             <CourseViewScreen
               courseId={params.courseId}
               course={params.course}
+              navigation={navigation}
               onBack={() => navigation.goBack()}
               onEdit={(courseId) => {
                 navigation.replace('CourseBuilder', { courseId });
@@ -149,6 +152,8 @@ export function SuperAdminTabs() {
           );
         }}
       </Stack.Screen>
+      <Stack.Screen name="SubjectDetail" component={SubjectDetailScreen as any} />
+      <Stack.Screen name="LessonDetail"  component={LessonDetailScreen  as any} />
       <Stack.Screen name="CourseBuilder" component={CourseBuilderScreen as any} />
       <Stack.Screen name="LessonEditor" component={LessonEditorScreen as any} />
       <Stack.Screen name="Audit" component={AuditScreen} />

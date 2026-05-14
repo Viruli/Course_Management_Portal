@@ -11,6 +11,8 @@ import { EnrolmentsScreen } from '../screens/admin/EnrolmentsScreen';
 import { CoursesScreen } from '../screens/admin/CoursesScreen';
 import { CourseBuilderScreen } from '../screens/admin/CourseBuilderScreen';
 import { CourseViewScreen } from '../screens/admin/CourseViewScreen';
+import { SubjectDetailScreen } from '../screens/admin/SubjectDetailScreen';
+import { LessonDetailScreen } from '../screens/admin/LessonDetailScreen';
 import { LessonEditorScreen } from '../screens/admin/LessonEditorScreen';
 import { MoreScreen } from '../screens/admin/MoreScreen';
 import { AuditScreen } from '../screens/admin/AuditScreen';
@@ -120,12 +122,15 @@ export function AdminTabs() {
           return (
             <CourseViewScreen
               courseId={params.courseId}
+              navigation={navigation}
               onBack={() => navigation.goBack()}
               onEdit={(courseId) => navigation.replace('CourseBuilder', { courseId })}
             />
           );
         }}
       </Stack.Screen>
+      <Stack.Screen name="SubjectDetail" component={SubjectDetailScreen as any} />
+      <Stack.Screen name="LessonDetail"  component={LessonDetailScreen  as any} />
       <Stack.Screen name="CourseBuilder" component={CourseBuilderScreen as any} />
       <Stack.Screen name="LessonEditor" component={LessonEditorScreen as any} />
       <Stack.Screen name="Audit" component={AuditScreen} />

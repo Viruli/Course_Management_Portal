@@ -23,14 +23,30 @@ export interface ApiCourse {
   createdByName?: string;
 }
 
-// Embedded subject inside GET /courses/:id (v1.2.0 §4.2 / §17 CourseDetail):
-// only id/title/order/createdAt/updatedAt. No semesterId, no description.
+// v1.1 backend embeds attachments on subjects in the course detail tree.
+export interface ApiAttachmentInTree {
+  id:          string;
+  fileName?:   string;   // v1.1 field name
+  filename?:   string;   // v1.2 field name
+  mimeType:    string;
+  sizeBytes:   number;
+  uploadedAt?: string;   // v1.1
+  createdAt?:  string;   // v1.2
+}
+
+// Embedded subject inside GET /courses/:id.
+// The v1.1 backend returns richer fields beyond the minimal v1.2 spec shape.
 export interface ApiSubjectInTree {
-  id:        string;
-  title:     string;
-  order:     number;
-  createdAt: string;
-  updatedAt: string;
+  id:              string;
+  title:           string;
+  order:           number;
+  createdAt:       string;
+  updatedAt:       string;
+  // v1.1 extra fields:
+  description?:    string;
+  youtubeVideoId?: string | null;
+  sortOrder?:      number;
+  attachments?:    ApiAttachmentInTree[];
 }
 
 // Embedded semester inside GET /courses/:id: id/title/subjectCount/order/+timestamps,
