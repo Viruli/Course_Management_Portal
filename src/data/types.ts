@@ -146,7 +146,7 @@ export interface BuilderLesson {
   id: string;
   title: string;
   description: string;
-  youtubeUrl: string;
+  url: string;                       // full video URL (v1.1.0 backend contract)
   attachments: BuilderAttachment[];
 }
 
@@ -158,14 +158,14 @@ export interface BuilderSubject {
 
 export interface BuilderSemester {
   id: string;
-  name: string;
+  title: string;       // matches API v1.2.0 Semester.title
   subjects: BuilderSubject[];
 }
 
 export interface BuilderCourse {
   id: string;
   title: string;
-  type: CourseType;
   description: string;
+  coverImageUrl: string;
   semesters: BuilderSemester[];
 }

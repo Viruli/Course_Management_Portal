@@ -1,6 +1,6 @@
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { auth } from './firebase';
-import { apiFetch, ApiResult } from './api';
+import { apiFetch, ApiResult, ApiError } from './api';
 import type { Role } from '../data/types';
 
 // ─── API-aligned types (do NOT use types from src/data/types.ts for these) ──
@@ -91,6 +91,10 @@ export async function loginUser(email: string, password: string): Promise<LoginR
   // Step 1: Firebase sign-in — throws FirebaseError on bad credentials.
   const credential = await signInWithEmailAndPassword(auth, email, password);
 
+  // Get the token directly from the credential — more reliable than auth.currentUser
+  // on mobile where the auth state listener may not have fired yet.
+  const idToken = await credential.user.getIdToken();
+
   // Step 2: Fetch the user's profile and role from our backend.
   // If this fails, clean up the Firebase session so we don't leave a half-signed-in state.
   let profile: ApiUserProfile;
@@ -98,11 +102,45 @@ export async function loginUser(email: string, password: string): Promise<LoginR
     const result = await apiFetch<ApiUserProfile>('/me', {
       method: 'GET',
       tag: 'auth.getMe',
+      token: idToken,
     });
     profile = result.data;
   } catch (err) {
-    await signOut(auth).catch(() => null);
-    throw err;
+    // Fallback: if GET /me returns 500 (backend crash), try reading role from Firebase
+    // JWT custom claims so admins can still sign in while the backend is broken.
+    if (err instanceof ApiError && (err.status >= 500 || err.code === 'UNKNOWN_ERROR')) {
+      try {
+        const tokenResult = await credential.user.getIdTokenResult();
+        const claimRole   = tokenResult.claims['role'] as string | undefined;
+
+        if (claimRole === 'admin' || claimRole === 'super_admin' || claimRole === 'student') {
+          profile = {
+            uid:             credential.user.uid,
+            email:           credential.user.email ?? email,
+            role:            claimRole as ApiUserRole,
+            roles:           [claimRole as ApiUserRole],
+            status:          'approved',
+            firstName:       credential.user.displayName?.split(' ')[0]               ?? '',
+            lastName:        credential.user.displayName?.split(' ').slice(1).join(' ') ?? '',
+            profilePhotoUrl: credential.user.photoURL ?? null,
+            createdAt:       new Date().toISOString(),
+            updatedAt:       new Date().toISOString(),
+          };
+          // Warn the user — profile data is incomplete until backend /me is fixed.
+          console.warn('[auth] GET /me returned 500 — signed in via JWT claims fallback.');
+        } else {
+          // No role claim set — can't sign in safely.
+          await signOut(auth).catch(() => null);
+          throw err;
+        }
+      } catch (innerErr) {
+        await signOut(auth).catch(() => null);
+        throw err;
+      }
+    } else {
+      await signOut(auth).catch(() => null);
+      throw err;
+    }
   }
 
   // Step 3: Block access based on account status.

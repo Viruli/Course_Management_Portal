@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Pressable, ScrollView, StyleSheet, Text, TextInput, View,
+  Modal, Pressable, ScrollView,
+  StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import {
   ArrowLeft, ChevronDown, ChevronUp, Plus, Trash2, BookOpen,
@@ -10,36 +11,140 @@ import { ScreenContainer } from '../../components/ScreenContainer';
 import { AppBar } from '../../components/AppBar';
 import { IconBtn } from '../../components/IconBtn';
 import { Button } from '../../components/Button';
-import { Pill } from '../../components/Pill';
 import type { Colors } from '../../theme/colors';
 import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
 import { useCourseBuilderStore } from '../../store/courseBuilderStore';
+import {
+  createSemester, updateSemester, deleteSemester,
+} from '../../services/semesters';
+import {
+  createSubject, updateSubject, deleteSubject,
+  listLessons,
+  youtubeIdFromInput,
+} from '../../services/subjects';
+import { listSemesters } from '../../services/semesters';
+import { updateCourse, publishCourse, getCourseById } from '../../services/courses';
+import { ApiError } from '../../services/api';
 import { toast } from '../../store/uiStore';
-import type { CourseType } from '../../data/types';
+import { DebugPanel } from '../../components/DebugPanel';
+import { CoverImagePicker } from '../../components/CoverImagePicker';
 
 interface Props {
-  route?: { params?: { mode?: 'create' | 'edit' } };
+  route?: { params?: { mode?: 'create' | 'edit'; courseId?: string } };
   navigation: any;
 }
 
-const courseTypes: CourseType[] = [
-  'Engineering', 'Science', 'Mathematics', 'Language Arts',
-  'Social Studies', 'Computing', 'Business', 'Creative',
-];
-
-export function CourseBuilderScreen({ navigation }: Props) {
+export function CourseBuilderScreen({ route, navigation }: Props) {
   const colors = useColors();
   const styles = useThemedStyles(createStyles);
-  const course = useCourseBuilderStore((s) => s.course);
-  const isEditing = useCourseBuilderStore((s) => s.isEditing);
-  const {
-    setTitle, setType, setDescription,
-    addSemester, renameSemester, removeSemester,
-    addSubject, renameSubject, removeSubject,
-    addLesson, removeLesson,
-  } = useCourseBuilderStore();
+  const course     = useCourseBuilderStore((s) => s.course);
+  const courseId   = useCourseBuilderStore((s) => s.courseId);
+  const isEditing  = useCourseBuilderStore((s) => s.isEditing);
+  const loadExisting   = useCourseBuilderStore((s) => s.loadExisting);
+  const loadFullCourse = useCourseBuilderStore((s) => s.loadFullCourse);
+  const { setTitle, setDescription, setCoverImageUrl,
+          addSemester, renameSemester, removeSemester,
+          addSubject, renameSubject, removeSubject, removeLesson } = useCourseBuilderStore();
 
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [expanded,   setExpanded]   = useState<Record<string, boolean>>({});
+  const [actionId,   setActionId]   = useState<string | null>(null);  // in-flight ID
+  const [publishing, setPublishing] = useState(false);
+  const [hydrating,  setHydrating]  = useState(false);
+
+  // Hydrate from API whenever the screen is opened in edit mode (route params
+  // contain courseId). Always re-fetches so the builder shows the latest
+  // semesters/subjects/lessons from the backend rather than stale session data.
+  useEffect(() => {
+    const paramCourseId = route?.params?.courseId;
+    if (!paramCourseId) return;
+    let cancelled = false;
+    setHydrating(true);
+
+    const hydrate = async () => {
+      const res = await getCourseById(paramCourseId);
+      if (cancelled) return;
+
+      // Always hydrate course metadata first so the user can edit title/desc/cover
+      // even if the semester tree can't be fetched.
+      loadExisting(
+        paramCourseId,
+        res.data.title ?? '',
+        res.data.description ?? '',
+        (res.data.coverImageUrl as string) ?? '',
+      );
+
+      // Try to hydrate the semester/subject/lesson tree. Source order:
+      //   (a) embedded array in GET /courses/:id (per API spec)
+      //   (b) GET /courses/:id/semesters (defensive fallback)
+      // Handle v1.1 (name/sortOrder) and v1.2 (title/order) field names.
+      let apiSemesters: any[] = Array.isArray((res.data as any).semesters)
+        ? (res.data as any).semesters
+        : [];
+
+      if (apiSemesters.length === 0 && (res.data.semesterCount ?? 0) > 0) {
+        try {
+          const semRes = await listSemesters(paramCourseId);
+          apiSemesters = semRes.data ?? [];
+        } catch { /* leave empty — backend may not expose this endpoint */ }
+      }
+      if (cancelled || apiSemesters.length === 0) return;
+
+      const builderSemesters = await Promise.all(apiSemesters.map(async (apiSem: any) => {
+        const apiSubjects: any[] = Array.isArray(apiSem.subjects) ? apiSem.subjects : [];
+        const builderSubjects = await Promise.all(apiSubjects.map(async (apiSub: any) => {
+          let lessons: any[] = [];
+          try {
+            const lesRes = await listLessons(apiSub.id);
+            lessons = lesRes.data ?? [];
+          } catch { /* no lessons for this subject */ }
+          return {
+            id:    apiSub.id,
+            title: apiSub.title ?? apiSub.name ?? '',
+            lessons: lessons.map((l) => ({
+              id:          l.id,
+              title:       l.title ?? '',
+              description: l.description ?? '',
+              url:         l.url ?? '',
+              attachments: [],
+            })),
+          };
+        }));
+        return {
+          id:    apiSem.id,
+          title: apiSem.title ?? apiSem.name ?? '',
+          subjects: builderSubjects,
+        };
+      }));
+
+      if (cancelled) return;
+      loadFullCourse(paramCourseId, {
+        id:            paramCourseId,
+        title:         res.data.title ?? '',
+        description:   res.data.description ?? '',
+        coverImageUrl: (res.data.coverImageUrl as string) ?? '',
+        semesters:     builderSemesters,
+      });
+    };
+
+    hydrate()
+      .catch(() => { if (!cancelled) toast.error('Failed to load course for editing.'); })
+      .finally(() => { if (!cancelled) setHydrating(false); });
+    return () => { cancelled = true; };
+  }, [route?.params?.courseId, courseId, loadExisting, loadFullCourse]);
+
+  // ── Add semester modal state ──────────────────────────────────────────────
+  const [semModal,    setSemModal]    = useState(false);
+  const [semTitle,    setSemTitle]    = useState('');
+  const [semError,    setSemError]    = useState('');
+  const [semSaving,   setSemSaving]   = useState(false);
+
+  // ── Add subject modal state ───────────────────────────────────────────────
+  const [subModal,  setSubModal]  = useState<{ semesterId: string } | null>(null);
+  const [subTitle,  setSubTitle]  = useState('');
+  const [subDesc,   setSubDesc]   = useState('');
+  const [subUrl,    setSubUrl]    = useState('');
+  const [subError,  setSubError]  = useState('');
+  const [subSaving, setSubSaving] = useState(false);
 
   // Keep newly-added semesters expanded by default.
   useEffect(() => {
@@ -58,9 +163,117 @@ export function CourseBuilderScreen({ navigation }: Props) {
     [course],
   );
 
+  // ── API-backed mutations ──────────────────────────────────────────────────
+
   const onAddSemester = () => {
-    const id = addSemester();
-    setExpanded((p) => ({ ...p, [id]: true }));
+    if (!courseId) { toast.error('Save the course first.'); return; }
+    setSemTitle(''); setSemError('');
+    setSemModal(true);
+  };
+
+  const onSubmitSemester = async () => {
+    if (!semTitle.trim()) { setSemError('Semester title is required.'); return; }
+    setSemSaving(true); setSemError('');
+    try {
+      const result = await createSemester(courseId!, { title: semTitle.trim() });
+      addSemester(result.data.id, result.data.title ?? semTitle.trim());
+      setExpanded((p) => ({ ...p, [result.data.id]: true }));
+      setSemModal(false);
+    } catch (err) {
+      if (err instanceof ApiError) setSemError(`${err.code}: ${err.message}`);
+      else setSemError('Failed to add semester. Try again.');
+    } finally { setSemSaving(false); }
+  };
+
+  const onRenameSemester = (semesterId: string, title: string) => {
+    renameSemester(semesterId, title);
+    updateSemester(semesterId, { title }).catch(() => {});
+  };
+
+  const onRemoveSemester = async (semesterId: string) => {
+    setActionId(semesterId);
+    try { await deleteSemester(semesterId); removeSemester(semesterId); }
+    catch { toast.error('Failed to delete semester.'); }
+    finally { setActionId(null); }
+  };
+
+  const onOpenSubjectModal = (semesterId: string) => {
+    setSubModal({ semesterId });
+    setSubTitle(''); setSubDesc(''); setSubUrl(''); setSubError('');
+  };
+
+  const onSubmitSubject = async () => {
+    if (!subModal) return;
+    if (!subTitle.trim()) { setSubError('Title is required.'); return; }
+    setSubSaving(true); setSubError('');
+    try {
+      const payload: Parameters<typeof createSubject>[1] = {
+        title:       subTitle.trim(),
+        description: subDesc.trim(),
+      };
+      if (subUrl.trim()) {
+        const id = youtubeIdFromInput(subUrl.trim());
+        if (!id) {
+          setSubError("That doesn't look like a valid YouTube URL or ID.");
+          setSubSaving(false);
+          return;
+        }
+        payload.youtubeVideoId = id;
+      }
+      const r = await createSubject(subModal.semesterId, payload);
+      addSubject(subModal.semesterId, r.data.id, r.data.title);
+      setSubModal(null);
+    } catch (err) {
+      if (err instanceof ApiError) setSubError(`[${err.code}] ${err.message}`);
+      else setSubError('Failed to add subject. Try again.');
+    } finally { setSubSaving(false); }
+  };
+
+  // ── Add lesson — navigate straight into the editor in create mode ────────
+  const onAddLesson = (semesterId: string, subjectId: string) => {
+    navigation.navigate('LessonEditor', { semesterId, subjectId });
+  };
+
+  const onRenameSubject = (semId: string, subId: string, title: string) => {
+    renameSubject(semId, subId, title);
+    updateSubject(subId, { title }).catch(() => {});
+  };
+
+  const onRemoveSubject = async (semesterId: string, subjectId: string) => {
+    setActionId(subjectId);
+    try { await deleteSubject(subjectId); removeSubject(semesterId, subjectId); }
+    catch { toast.error('Failed to delete subject.'); }
+    finally { setActionId(null); }
+  };
+
+  const onSaveDraft = async () => {
+    if (courseId && course.title.trim()) {
+      const patch: Parameters<typeof updateCourse>[1] = {
+        title:       course.title.trim(),
+        description: course.description.trim(),
+      };
+      if (course.coverImageUrl.trim()) patch.coverImageUrl = course.coverImageUrl.trim();
+      updateCourse(courseId, patch).catch(() => {});
+    }
+    toast.info(course.title.trim() ? `Draft saved: "${course.title}".` : 'Draft saved.');
+    navigation.goBack();
+  };
+
+  const onPublish = async () => {
+    if (!courseId) { toast.error('Course not saved yet.'); return; }
+    setPublishing(true);
+    try {
+      await publishCourse(courseId);
+      toast.success(`"${course.title}" published!`);
+      navigation.goBack();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.code === 'EMPTY_SEMESTER') toast.error('Every semester needs at least one subject.');
+        else if (err.code === 'NO_SEMESTERS') toast.error('Add at least one semester first.');
+        else if (err.code === 'INVALID_STATE') toast.error('This course is already published.');
+        else toast.error(err.message);
+      } else { toast.error('Publish failed. Try again.'); }
+    } finally { setPublishing(false); }
   };
 
   const openLesson = (semesterId: string, subjectId: string, lessonId: string) => {
@@ -76,7 +289,7 @@ export function CourseBuilderScreen({ navigation }: Props) {
       />
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
-        {/* Basics */}
+        {/* Course basics */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Course basics</Text>
           <View style={{ gap: 12 }}>
@@ -87,15 +300,8 @@ export function CourseBuilderScreen({ navigation }: Props) {
                 placeholder="e.g. Mathematics Foundations"
                 placeholderTextColor={colors.muted}
                 style={styles.input}
+                maxLength={200}
               />
-            </Field>
-
-            <Field label="Course type">
-              <View style={styles.typeRow}>
-                {courseTypes.map((t) => (
-                  <Pill key={t} active={course.type === t} onPress={() => setType(t)}>{t}</Pill>
-                ))}
-              </View>
             </Field>
 
             <Field label="Description">
@@ -107,6 +313,14 @@ export function CourseBuilderScreen({ navigation }: Props) {
                 multiline
                 style={[styles.input, styles.textarea]}
                 textAlignVertical="top"
+                maxLength={5000}
+              />
+            </Field>
+
+            <Field label="Cover image (optional)">
+              <CoverImagePicker
+                value={course.coverImageUrl}
+                onChange={setCoverImageUrl}
               />
             </Field>
           </View>
@@ -141,9 +355,9 @@ export function CourseBuilderScreen({ navigation }: Props) {
                         <GraduationCap size={16} color={colors.accent} />
                       </View>
                       <TextInput
-                        value={sem.name}
-                        onChangeText={(v) => renameSemester(sem.id, v)}
-                        placeholder="Semester name"
+                        value={sem.title}
+                        onChangeText={(v) => onRenameSemester(sem.id, v)}
+                        placeholder="Semester title"
                         placeholderTextColor="rgba(255,255,255,0.4)"
                         style={styles.semesterTitle}
                       />
@@ -152,7 +366,7 @@ export function CourseBuilderScreen({ navigation }: Props) {
                       </Text>
                       <Pressable
                         hitSlop={8}
-                        onPress={() => removeSemester(sem.id)}
+                        onPress={() => onRemoveSemester(sem.id)}
                         style={styles.headBtn}
                       >
                         <Trash2 size={14} color="rgba(255,255,255,0.55)" />
@@ -180,14 +394,14 @@ export function CourseBuilderScreen({ navigation }: Props) {
                                 </View>
                                 <TextInput
                                   value={sub.title}
-                                  onChangeText={(v) => renameSubject(sem.id, sub.id, v)}
+                                  onChangeText={(v) => onRenameSubject(sem.id, sub.id, v)}
                                   placeholder="Subject title"
                                   placeholderTextColor={colors.muted}
                                   style={styles.subjectTitle}
                                 />
                                 <Pressable
                                   hitSlop={8}
-                                  onPress={() => removeSubject(sem.id, sub.id)}
+                                  onPress={() => onRemoveSubject(sem.id, sub.id)}
                                 >
                                   <Trash2 size={14} color={colors.muted} />
                                 </Pressable>
@@ -207,7 +421,7 @@ export function CourseBuilderScreen({ navigation }: Props) {
                                       {lesson.title || 'Untitled lesson'}
                                     </Text>
                                     <Text style={styles.lessonMeta}>
-                                      {lesson.youtubeUrl ? '· Video' : '· No video'}
+                                      {lesson.url ? '· Video' : '· No video'}
                                       {lesson.attachments.length ? `  ·  ${lesson.attachments.length} attachment${lesson.attachments.length === 1 ? '' : 's'}` : ''}
                                     </Text>
                                   </View>
@@ -222,10 +436,7 @@ export function CourseBuilderScreen({ navigation }: Props) {
 
                               <Pressable
                                 style={styles.addLine}
-                                onPress={() => {
-                                  const id = addLesson(sem.id, sub.id);
-                                  openLesson(sem.id, sub.id, id);
-                                }}
+                                onPress={() => onAddLesson(sem.id, sub.id)}
                               >
                                 <FilePlus size={14} color={colors.primary} />
                                 <Text style={styles.addLineText}>Add lesson</Text>
@@ -236,7 +447,7 @@ export function CourseBuilderScreen({ navigation }: Props) {
 
                         <Pressable
                           style={styles.addSubject}
-                          onPress={() => addSubject(sem.id)}
+                          onPress={() => onOpenSubjectModal(sem.id)}
                         >
                           <Plus size={14} color={colors.primary} />
                           <Text style={styles.addSubjectText}>Add subject</Text>
@@ -249,45 +460,111 @@ export function CourseBuilderScreen({ navigation }: Props) {
             </View>
           )}
 
-          <Pressable style={styles.addSemester} onPress={onAddSemester}>
+          <Pressable
+            style={[styles.addSemester, !courseId && { opacity: 0.4 }]}
+            onPress={onAddSemester}
+            disabled={!courseId}
+          >
             <Plus size={16} color={colors.primary} />
             <Text style={styles.addSemesterText}>Add semester</Text>
           </Pressable>
         </View>
+        <DebugPanel
+          tags={['semesters.create', 'semesters.update', 'subjects.create', 'subjects.update', 'lessons.create', 'courses.publish']}
+          title="Builder debug"
+        />
       </ScrollView>
 
       {/* Sticky save bar */}
       <View style={styles.stickyBar}>
         <View style={{ flex: 1 }}>
-          <Button
-            variant="secondary"
-            size="lg"
-            full
-            onPress={() => {
-              toast.info(course.title.trim() ? `Draft saved: "${course.title}".` : 'Draft saved.');
-              navigation.goBack();
-            }}
-          >
-            Save draft
-          </Button>
+          <Button variant="secondary" size="lg" full onPress={onSaveDraft}>Save draft</Button>
         </View>
         <View style={{ flex: 1 }}>
           <Button
-            size="lg"
-            full
-            disabled={!course.title.trim() || course.semesters.length === 0}
-            onPress={() => {
-              toast.success(`${isEditing ? 'Updated' : 'Published'}: "${course.title}".`);
-              navigation.goBack();
-            }}
+            size="lg" full
+            disabled={!course.title.trim() || course.semesters.length === 0 || publishing}
+            onPress={onPublish}
           >
-            {isEditing ? 'Update' : 'Publish'}
+            {publishing ? 'Publishing…' : isEditing ? 'Update' : 'Publish'}
           </Button>
         </View>
       </View>
+
+      {/* Add semester modal */}
+      <Modal transparent animationType="slide" visible={semModal} onRequestClose={() => setSemModal(false)}>
+        <Pressable style={subStyles.backdrop} onPress={() => setSemModal(false)}>
+          <Pressable style={subStyles.sheet} onPress={() => {}}>
+            <Text style={subStyles.title}>Add semester</Text>
+            <TextInput
+              style={subStyles.input}
+              value={semTitle}
+              onChangeText={(t) => { setSemTitle(t); setSemError(''); }}
+              placeholder="e.g. Semester 1"
+              placeholderTextColor="#999"
+              autoFocus
+            />
+            {semError ? <Text style={subStyles.error}>{semError}</Text> : null}
+            <Button full disabled={semSaving} onPress={onSubmitSemester}>
+              {semSaving ? 'Adding…' : 'Add semester'}
+            </Button>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Add subject modal */}
+      <Modal transparent animationType="slide" visible={subModal !== null} onRequestClose={() => setSubModal(null)}>
+        <Pressable style={subStyles.backdrop} onPress={() => setSubModal(null)}>
+          <Pressable style={subStyles.sheet} onPress={() => {}}>
+            <Text style={subStyles.title}>Add subject</Text>
+            <TextInput
+              style={subStyles.input}
+              value={subTitle}
+              onChangeText={(t) => { setSubTitle(t); setSubError(''); }}
+              placeholder="Subject title *"
+              placeholderTextColor="#999"
+              autoFocus
+              maxLength={200}
+            />
+            <TextInput
+              style={[subStyles.input, subStyles.multi]}
+              value={subDesc}
+              onChangeText={(t) => { setSubDesc(t); setSubError(''); }}
+              placeholder="Description (optional)"
+              placeholderTextColor="#999"
+              multiline
+              maxLength={2000}
+            />
+            <TextInput
+              style={subStyles.input}
+              value={subUrl}
+              onChangeText={(t) => { setSubUrl(t); setSubError(''); }}
+              placeholder="YouTube URL or video ID (optional)"
+              placeholderTextColor="#999"
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+            />
+            {subError ? <Text style={subStyles.error}>{subError}</Text> : null}
+            <Button full disabled={subSaving} onPress={onSubmitSubject}>
+              {subSaving ? 'Adding…' : 'Add subject'}
+            </Button>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
     </ScreenContainer>
   );
 }
+
+const subStyles = StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  sheet:    { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, gap: 12 },
+  title:    { fontSize: 17, fontWeight: '700', color: '#152A24' },
+  input:    { backgroundColor: '#F5F5F5', borderRadius: 12, padding: 14, fontSize: 14, color: '#152A24' },
+  multi:    { minHeight: 70, textAlignVertical: 'top' as const },
+  error:    { fontSize: 12, color: '#E53E3E', fontWeight: '600' },
+});
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   const styles = useThemedStyles(createStyles);
@@ -318,7 +595,6 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     fontSize: 14, color: colors.primary,
   },
   textarea: { height: 90, paddingTop: 12, paddingBottom: 12 },
-  typeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
 
   emptyCurriculum: {
     alignItems: 'center', padding: 24, gap: 6,

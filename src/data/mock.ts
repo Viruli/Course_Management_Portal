@@ -121,58 +121,55 @@ export const SAMPLE_USERS: AppUser[] = [
 export const SAMPLE_BUILDER_COURSE: BuilderCourse = {
   id: 'math',
   title: 'Mathematics Foundations',
-  type: 'Mathematics',
-  description:
-    'A practical, paced introduction to algebra, geometry and statistics. ' +
-    "You'll cover slope-intercept form, solving for x, and graphing — " +
-    'with worked examples drawn from past practice papers.',
+  description: 'A practical, paced introduction to algebra, geometry and statistics.',
+  coverImageUrl: '',
   semesters: [
     {
       id: 'sem-1',
-      name: 'Semester 1',
+      title: 'Semester 1',
       subjects: [
         {
           id: 'sub-1-1',
           title: 'Number Sense & Operations',
           lessons: [
-            { id: 'l-1-1-1', title: 'Place value and integers',     description: 'Understanding number positions and operations on integers.', youtubeUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', attachments: [
+            { id: 'l-1-1-1', title: 'Place value and integers',     description: 'Understanding number positions and operations on integers.', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', attachments: [
               { id: 'at-1', name: 'Place value worksheet', kind: 'pdf', size: '312 KB' },
             ] },
-            { id: 'l-1-1-2', title: 'Order of operations',           description: 'BODMAS / PEMDAS and how to evaluate complex expressions.', youtubeUrl: '', attachments: [] },
-            { id: 'l-1-1-3', title: 'Negative numbers in real life', description: 'Temperature, debt, and elevation examples.', youtubeUrl: '', attachments: [] },
+            { id: 'l-1-1-2', title: 'Order of operations',           description: 'BODMAS / PEMDAS and how to evaluate complex expressions.', url: '', attachments: [] },
+            { id: 'l-1-1-3', title: 'Negative numbers in real life', description: 'Temperature, debt, and elevation examples.', url: '', attachments: [] },
           ],
         },
         {
           id: 'sub-1-2',
           title: 'Fractions, Decimals & Percents',
           lessons: [
-            { id: 'l-1-2-1', title: 'Converting between forms',  description: 'Move between fractions, decimals and percentages confidently.', youtubeUrl: '', attachments: [] },
-            { id: 'l-1-2-2', title: 'Operations with fractions', description: 'Add, subtract, multiply and divide fractions.',                   youtubeUrl: '', attachments: [] },
+            { id: 'l-1-2-1', title: 'Converting between forms',  description: 'Move between fractions, decimals and percentages confidently.', url: '', attachments: [] },
+            { id: 'l-1-2-2', title: 'Operations with fractions', description: 'Add, subtract, multiply and divide fractions.',                   url: '', attachments: [] },
           ],
         },
       ],
     },
     {
       id: 'sem-2',
-      name: 'Semester 2',
+      title: 'Semester 2',
       subjects: [
         {
           id: 'sub-2-1',
           title: 'Algebra: Linear Equations',
           lessons: [
-            { id: 'l-2-1-1', title: 'Slope-intercept form',     description: 'y = mx + b and how to graph any line.',           youtubeUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', attachments: [
+            { id: 'l-2-1-1', title: 'Slope-intercept form',     description: 'y = mx + b and how to graph any line.',           url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', attachments: [
               { id: 'at-2', name: 'Lesson 8 · Practice quiz', kind: 'pdf', size: '10 questions' },
             ] },
-            { id: 'l-2-1-2', title: 'Solving for x',            description: 'Isolate variables using inverse operations.',     youtubeUrl: '', attachments: [] },
-            { id: 'l-2-1-3', title: 'Word problems → equations', description: 'Translate everyday situations into linear equations.', youtubeUrl: '', attachments: [] },
+            { id: 'l-2-1-2', title: 'Solving for x',            description: 'Isolate variables using inverse operations.',     url: '', attachments: [] },
+            { id: 'l-2-1-3', title: 'Word problems → equations', description: 'Translate everyday situations into linear equations.', url: '', attachments: [] },
           ],
         },
         {
           id: 'sub-2-2',
           title: 'Geometry Foundations',
           lessons: [
-            { id: 'l-2-2-1', title: 'Points, lines and angles', description: 'The building blocks of geometric reasoning.', youtubeUrl: '', attachments: [] },
-            { id: 'l-2-2-2', title: 'Triangle properties',      description: 'Sum of angles, types of triangles, congruence.', youtubeUrl: '', attachments: [] },
+            { id: 'l-2-2-1', title: 'Points, lines and angles', description: 'The building blocks of geometric reasoning.', url: '', attachments: [] },
+            { id: 'l-2-2-2', title: 'Triangle properties',      description: 'Sum of angles, types of triangles, congruence.', url: '', attachments: [] },
           ],
         },
       ],

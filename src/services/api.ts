@@ -44,6 +44,7 @@ interface RequestOptions {
   timeoutMs?: number;
   tag?: string;
   redactFields?: string[];
+  token?: string;   // override auto-fetched Firebase token
 }
 
 export interface ApiResult<T> {
@@ -85,15 +86,15 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
     );
   }
 
-  const { method = 'GET', body, timeoutMs = 15000, tag, redactFields } = options;
+  const { method = 'GET', body, timeoutMs = 15000, tag, redactFields, token: overrideToken } = options;
   const url = `${BASE_URL}${path}`;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   const startedAt = Date.now();
   const requestBodyForLog = redact(body, redactFields);
 
-  // Auto-attach Firebase token if the user is signed in.
-  const token = await getAuthToken();
+  // Use caller-supplied token or auto-fetch from Firebase.
+  const token = overrideToken ?? await getAuthToken();
 
   let response: Response;
   try {

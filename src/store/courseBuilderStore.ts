@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type {
   BuilderCourse, BuilderSemester, BuilderSubject, BuilderLesson,
-  BuilderAttachment, CourseType,
+  BuilderAttachment,
 } from '../data/types';
 
 const uid = (prefix: string) =>
@@ -10,28 +10,16 @@ const uid = (prefix: string) =>
 const emptyCourse = (): BuilderCourse => ({
   id: uid('crs'),
   title: '',
-  type: 'Engineering',
   description: '',
+  coverImageUrl: '',
   semesters: [],
-});
-
-const emptySemester = (idx: number): BuilderSemester => ({
-  id: uid('sem'),
-  name: `Semester ${idx}`,
-  subjects: [],
-});
-
-const emptySubject = (): BuilderSubject => ({
-  id: uid('sub'),
-  title: '',
-  lessons: [],
 });
 
 const emptyLesson = (): BuilderLesson => ({
   id: uid('lsn'),
   title: '',
   description: '',
-  youtubeUrl: '',
+  url: '',
   attachments: [],
 });
 
@@ -40,27 +28,30 @@ interface State {
   isEditing: boolean;
 
   // Whole-course actions
-  initNew: () => void;
+  courseId: string | null;               // real server-assigned course ID
+  initNew: (courseId: string, title?: string, description?: string, coverImageUrl?: string) => void;
+  loadExisting: (courseId: string, title: string, description: string, coverImageUrl: string) => void;
+  loadFullCourse: (courseId: string, course: BuilderCourse) => void;
   load: (course: BuilderCourse) => void;
   reset: () => void;
 
   // Course-level
   setTitle: (title: string) => void;
-  setType: (type: CourseType) => void;
   setDescription: (description: string) => void;
+  setCoverImageUrl: (url: string) => void;
 
   // Semester
-  addSemester: () => string;
-  renameSemester: (semesterId: string, name: string) => void;
+  addSemester: (id: string, title: string) => void;     // id + title from API response
+  renameSemester: (semesterId: string, title: string) => void;
   removeSemester: (semesterId: string) => void;
 
   // Subject
-  addSubject: (semesterId: string) => string;
+  addSubject: (semesterId: string, id: string, title: string) => void;
   renameSubject: (semesterId: string, subjectId: string, title: string) => void;
   removeSubject: (semesterId: string, subjectId: string) => void;
 
-  // Lesson
-  addLesson: (semesterId: string, subjectId: string) => string;
+  // Lesson — id is the server-assigned lesson ID
+  addLesson: (semesterId: string, subjectId: string, id?: string) => string;
   removeLesson: (semesterId: string, subjectId: string, lessonId: string) => void;
   updateLesson: (
     semesterId: string,
@@ -71,42 +62,48 @@ interface State {
   getLesson: (semesterId: string, subjectId: string, lessonId: string) => BuilderLesson | null;
 
   // Attachments
-  addAttachment: (semesterId: string, subjectId: string, lessonId: string) => void;
+  addAttachment: (semesterId: string, subjectId: string, lessonId: string, attachment: BuilderAttachment) => void;
   removeAttachment: (semesterId: string, subjectId: string, lessonId: string, attachmentId: string) => void;
 }
-
-const fakeAttachmentNames = [
-  { name: 'Worksheet.pdf',           kind: 'pdf'   as const, size: '312 KB' },
-  { name: 'Slides.pdf',              kind: 'pdf'   as const, size: '1.2 MB' },
-  { name: 'Practice quiz.pdf',       kind: 'pdf'   as const, size: '186 KB' },
-  { name: 'Reference notes.docx',    kind: 'doc'   as const, size: '94 KB' },
-  { name: 'Example walkthrough.mp4', kind: 'video' as const, size: '12 MB' },
-  { name: 'Diagram.png',             kind: 'image' as const, size: '420 KB' },
-];
 
 export const useCourseBuilderStore = create<State>((set, get) => ({
   course: emptyCourse(),
   isEditing: false,
+  courseId: null,
 
-  initNew: () => set({ course: emptyCourse(), isEditing: false }),
+  initNew: (courseId, title, description, coverImageUrl) => set({
+    course: {
+      ...emptyCourse(),
+      ...(title         ? { title }         : {}),
+      ...(description   ? { description }   : {}),
+      ...(coverImageUrl ? { coverImageUrl } : {}),
+    },
+    isEditing: false,
+    courseId,
+  }),
+  loadExisting: (courseId, title, description, coverImageUrl) => set({
+    course: { ...emptyCourse(), title, description, coverImageUrl },
+    isEditing: true,
+    courseId,
+  }),
+  loadFullCourse: (courseId, course) => set({ course, courseId, isEditing: true }),
   load: (course) => set({ course, isEditing: true }),
-  reset: () => set({ course: emptyCourse(), isEditing: false }),
+  reset: () => set({ course: emptyCourse(), isEditing: false, courseId: null }),
 
-  setTitle:       (title)       => set((s) => ({ course: { ...s.course, title } })),
-  setType:        (type)        => set((s) => ({ course: { ...s.course, type } })),
-  setDescription: (description) => set((s) => ({ course: { ...s.course, description } })),
+  setTitle:         (title)         => set((s) => ({ course: { ...s.course, title } })),
+  setDescription:   (description)   => set((s) => ({ course: { ...s.course, description } })),
+  setCoverImageUrl: (coverImageUrl) => set((s) => ({ course: { ...s.course, coverImageUrl } })),
 
-  addSemester: () => {
-    const sem = emptySemester(get().course.semesters.length + 1);
+  addSemester: (id, title) => {
+    const sem: BuilderSemester = { id, title, subjects: [] };
     set((s) => ({ course: { ...s.course, semesters: [...s.course.semesters, sem] } }));
-    return sem.id;
   },
-  renameSemester: (semesterId, name) =>
+  renameSemester: (semesterId, title) =>
     set((s) => ({
       course: {
         ...s.course,
         semesters: s.course.semesters.map((sem) =>
-          sem.id === semesterId ? { ...sem, name } : sem,
+          sem.id === semesterId ? { ...sem, title } : sem,
         ),
       },
     })),
@@ -118,8 +115,8 @@ export const useCourseBuilderStore = create<State>((set, get) => ({
       },
     })),
 
-  addSubject: (semesterId) => {
-    const sub = emptySubject();
+  addSubject: (semesterId, id, title) => {
+    const sub: BuilderSubject = { id, title, lessons: [] };
     set((s) => ({
       course: {
         ...s.course,
@@ -128,7 +125,6 @@ export const useCourseBuilderStore = create<State>((set, get) => ({
         ),
       },
     }));
-    return sub.id;
   },
   renameSubject: (semesterId, subjectId, title) =>
     set((s) => ({
@@ -157,8 +153,8 @@ export const useCourseBuilderStore = create<State>((set, get) => ({
       },
     })),
 
-  addLesson: (semesterId, subjectId) => {
-    const lesson = emptyLesson();
+  addLesson: (semesterId, subjectId, id) => {
+    const lesson = { ...emptyLesson(), ...(id ? { id } : {}) };
     set((s) => ({
       course: {
         ...s.course,
@@ -216,14 +212,7 @@ export const useCourseBuilderStore = create<State>((set, get) => ({
     return sub?.lessons.find((x) => x.id === lessonId) ?? null;
   },
 
-  addAttachment: (semesterId, subjectId, lessonId) => {
-    const sample = fakeAttachmentNames[Math.floor(Math.random() * fakeAttachmentNames.length)];
-    const attachment: BuilderAttachment = {
-      id: uid('att'),
-      name: sample.name,
-      kind: sample.kind,
-      size: sample.size,
-    };
+  addAttachment: (semesterId, subjectId, lessonId, attachment) => {
     set((s) => ({
       course: {
         ...s.course,

@@ -13,6 +13,8 @@ import { UsersScreen } from '../screens/superadmin/UsersScreen';
 import { UserDetailScreen } from '../screens/superadmin/UserDetailScreen';
 import { CoursesScreen } from '../screens/admin/CoursesScreen';
 import { CourseBuilderScreen } from '../screens/admin/CourseBuilderScreen';
+import { SubjectDetailScreen } from '../screens/admin/SubjectDetailScreen';
+import { LessonDetailScreen } from '../screens/admin/LessonDetailScreen';
 import { CourseViewScreen } from '../screens/admin/CourseViewScreen';
 import { LessonEditorScreen } from '../screens/admin/LessonEditorScreen';
 import { AuditScreen } from '../screens/admin/AuditScreen';
@@ -76,18 +78,16 @@ function SuperMain({ navigation }: any) {
   const colors = useColors();
   const [tab, setTab] = React.useState<TabId>('dashboard');
   const initNew = useCourseBuilderStore((s) => s.initNew);
-  const load    = useCourseBuilderStore((s) => s.load);
 
-  const openCreate = () => {
-    initNew();
+  const onCourseCreated = (courseId: string, title: string, description: string, coverImageUrl: string) => {
+    initNew(courseId, title, description, coverImageUrl);
     navigation.navigate('CourseBuilder');
   };
-  const openView = (c: Course) => {
-    navigation.navigate('CourseView', { course: c });
+  const openView = (courseId: string) => {
+    navigation.navigate('CourseView', { courseId });
   };
-  const openEdit = (_c: Course) => {
-    load(SAMPLE_BUILDER_COURSE);
-    navigation.navigate('CourseBuilder');
+  const openEdit = (courseId: string) => {
+    navigation.navigate('CourseBuilder', { courseId });
   };
   const goBell  = () => navigation.navigate('Notifications');
   const goAudit = () => navigation.navigate('Audit');
@@ -112,7 +112,7 @@ function SuperMain({ navigation }: any) {
         {tab === 'dashboard' && <SuperDashboardScreen onTabChange={handleDashboardNav} onBell={goBell} onOpenProfile={goEditProfile} />}
         {tab === 'approvals' && <SuperQueueScreen />}
         {tab === 'users'     && <UsersScreen navigation={navigation} />}
-        {tab === 'courses'   && <CoursesScreen onCourse={openView} onEditCourse={openEdit} onCreate={openCreate} />}
+        {tab === 'courses'   && <CoursesScreen onCourse={openView} onEditCourse={openEdit} onCourseCreated={onCourseCreated} />}
         {tab === 'more'      && (
           <MoreScreen
             role="super"
@@ -138,19 +138,22 @@ export function SuperAdminTabs() {
       <Stack.Screen name="CreateAdmin" component={CreateAdminScreen as any} />
       <Stack.Screen name="CourseView">
         {({ navigation, route }) => {
-          const course = (route.params as any).course as Course;
+          const params = route.params as any;
           return (
             <CourseViewScreen
-              course={course}
+              courseId={params.courseId}
+              course={params.course}
+              navigation={navigation}
               onBack={() => navigation.goBack()}
-              onEdit={() => {
-                useCourseBuilderStore.getState().load(SAMPLE_BUILDER_COURSE);
-                navigation.replace('CourseBuilder');
+              onEdit={(courseId) => {
+                navigation.replace('CourseBuilder', { courseId });
               }}
             />
           );
         }}
       </Stack.Screen>
+      <Stack.Screen name="SubjectDetail" component={SubjectDetailScreen as any} />
+      <Stack.Screen name="LessonDetail"  component={LessonDetailScreen  as any} />
       <Stack.Screen name="CourseBuilder" component={CourseBuilderScreen as any} />
       <Stack.Screen name="LessonEditor" component={LessonEditorScreen as any} />
       <Stack.Screen name="Audit" component={AuditScreen} />

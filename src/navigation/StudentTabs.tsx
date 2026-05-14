@@ -54,7 +54,12 @@ function BottomNav({ active, onChange }: { active: TabId; onChange: (id: TabId) 
 function StudentMain({ navigation }: any) {
   const colors = useColors();
   const [tab, setTab] = React.useState<TabId>('home');
-  const goCourse = (c: Course) => navigation.navigate('CourseDetail', { course: c });
+  // Accepts either a legacy Course object (from HomeScreen/MyLearning) or a courseId string (from BrowseScreen)
+  const goCourse = (c: Course | string) => {
+    const courseId = typeof c === 'string' ? c : c.id;
+    const course   = typeof c === 'object' ? c : undefined;
+    navigation.navigate('CourseDetail', { courseId, course });
+  };
   const goBell = () => navigation.navigate('Notifications');
   const goEditProfile = () => navigation.navigate('EditProfile');
 
@@ -78,6 +83,7 @@ export function StudentTabs() {
       <Stack.Screen name="CourseDetail">
         {({ navigation, route }) => (
           <CourseDetailScreen
+            courseId={(route.params as any).courseId}
             course={(route.params as any).course}
             onBack={() => navigation.goBack()}
             onPlay={() => navigation.navigate('LessonPlayer')}

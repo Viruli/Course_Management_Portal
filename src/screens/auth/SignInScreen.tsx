@@ -13,6 +13,7 @@ import { ApiError } from '../../services/api';
 import { useAppStore } from '../../store/appStore';
 import { useProfileStore } from '../../store/profileStore';
 import { toast } from '../../store/uiStore';
+import { DebugPanel } from '../../components/DebugPanel';
 
 interface Props {
   onSubmit: () => void;
@@ -91,8 +92,14 @@ export function SignInScreen({ onSubmit, onSwitchToSignUp, onBack, onForgotPassw
         // GET /me failed after Firebase sign-in (loginUser cleans up Firebase session).
         if (err.code === 'NETWORK_ERROR' || err.code === 'TIMEOUT') {
           toast.error("Couldn't reach the server. Check your connection.");
+        } else if (err.status === 500 || err.code === 'INTERNAL_ERROR') {
+          setAuthError('Your account exists but could not be loaded (server error). Please contact your administrator.');
+        } else if (err.status === 404 || err.code === 'USER_NOT_FOUND') {
+          setAuthError('Account not found on this server. Please contact your administrator.');
+        } else if (err.status === 403 || err.code === 'FORBIDDEN') {
+          setAuthError('Access denied. Your account does not have permission to use this app.');
         } else {
-          toast.error(err.message);
+          setAuthError(err.message);
         }
       } else {
         toast.error('Something went wrong. Please try again.');
@@ -164,6 +171,8 @@ export function SignInScreen({ onSubmit, onSwitchToSignUp, onBack, onForgotPassw
             </Pressable>
           </View>
         </View>
+
+        <DebugPanel tags={['auth.getMe']} title="Sign-in debug" />
       </View>
     </ScreenContainer>
   );

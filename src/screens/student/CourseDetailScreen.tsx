@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   ArrowLeft, Bookmark, Share2, Star, MessageCircle,
@@ -14,37 +14,64 @@ import { CourseCover } from '../../components/CourseCover';
 import { Button } from '../../components/Button';
 import { LESSON, SAMPLE_BUILDER_COURSE } from '../../data/mock';
 import { toast } from '../../store/uiStore';
+import { getCourseById, ApiCourseDetail } from '../../services/courses';
+import { ApiError } from '../../services/api';
 import type { Colors } from '../../theme/colors';
 import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
 import type { Course, BuilderSemester, BuilderLesson } from '../../data/types';
 
 interface Props {
-  course: Course;
+  courseId?: string;   // when provided, fetch real data
+  course?: Course;     // legacy mock path — kept for backward compat
   onBack: () => void;
   onPlay: () => void;
   onEnrol: () => void;
 }
 
-export function CourseDetailScreen({ course, onBack, onPlay, onEnrol }: Props) {
+export function CourseDetailScreen({ courseId, course, onBack, onPlay, onEnrol }: Props) {
   const colors = useColors();
   const styles = useThemedStyles(createStyles);
   const [tab, setTab] = useState('overview');
   const [bookmarked, setBookmarked] = useState(false);
-  const enrolled = course.progress > 0;
+  const [apiCourse, setApiCourse] = useState<ApiCourseDetail | null>(null);
+
+  useEffect(() => {
+    if (!courseId) return;
+    let cancelled = false;
+    getCourseById(courseId).then((r) => {
+      if (!cancelled) setApiCourse(r.data);
+    }).catch((err) => {
+      if (!cancelled) {
+        if (err instanceof ApiError && err.code === 'COURSE_NOT_FOUND') {
+          toast.error('This course is no longer available.');
+        } else {
+          toast.error('Failed to load course details.');
+        }
+      }
+    });
+    return () => { cancelled = true; };
+  }, [courseId]);
+
+  // Resolved display values — API data takes precedence over mock
+  const title     = apiCourse?.title       ?? course?.title       ?? '';
+  const enrolled  = (course?.progress ?? 0) > 0;
 
   const handleBookmark = () => {
     setBookmarked((b) => {
       const next = !b;
-      toast.info(next ? `Bookmarked "${course.title}".` : 'Removed bookmark.');
+      toast.info(next ? `Bookmarked "${title}".` : 'Removed bookmark.');
       return next;
     });
   };
-  const handleShare = () => toast.info(`Sharing "${course.title}"…`);
-  const handleMessageInstructor = () => toast.info(`Opening chat with ${course.instructor}.`);
+  const handleShare = () => toast.info(`Sharing "${title}"…`);
+  const handleMessageInstructor = () => toast.info(`Opening chat with the instructor.`);
 
-  const curriculum = SAMPLE_BUILDER_COURSE.semesters;
+  // Curriculum: use real API semesters when available, fall back to mock
+  const curriculum = apiCourse?.semesters ?? (SAMPLE_BUILDER_COURSE.semesters as any[]);
   const totalLessons = useMemo(
-    () => curriculum.reduce((n, sem) => n + sem.subjects.reduce((m, s) => m + s.lessons.length, 0), 0),
+    () => curriculum.reduce((n: number, sem: any) =>
+      n + (sem.subjects ?? []).reduce((m: number, s: any) =>
+        m + (s.lessons?.length ?? 0), 0), 0),
     [curriculum],
   );
 
@@ -67,25 +94,25 @@ export function CourseDetailScreen({ course, onBack, onPlay, onEnrol }: Props) {
         contentContainerStyle={{ paddingBottom: 100 }}
       >
         <View style={styles.coverWrap}>
-          <CourseCover kind={course.kind} emblem={course.emblem} tag={course.tag} height={180} />
+          <CourseCover kind={course?.kind ?? 'cs'} emblem={course?.emblem ?? '📘'} tag={course?.tag ?? ''} height={180} />
         </View>
 
         <View style={styles.head}>
-          <Text style={styles.title}>{course.title}</Text>
+          <Text style={styles.title}>{title}</Text>
           <View style={styles.meta}>
             <Star size={12} color={colors.warning} />
-            <Text style={styles.metaB}>{course.rating}</Text>
+            <Text style={styles.metaB}>{course?.rating ?? '—'}</Text>
             <View style={styles.dotSep} />
-            <Text style={styles.metaT}>{course.students.toLocaleString()} students</Text>
+            <Text style={styles.metaT}>{(course?.students ?? 0).toLocaleString() || '—'} students</Text>
             <View style={styles.dotSep} />
-            <Text style={styles.metaT}>{course.lessons} lessons</Text>
+            <Text style={styles.metaT}>{course?.lessons ?? (apiCourse?.semesters?.length ?? 0)} {course ? 'lessons' : 'semesters'}</Text>
           </View>
 
           <Pressable style={styles.instructorRow} onPress={handleMessageInstructor}>
-            <Avatar size={40} name={course.instructor} variant="dark" />
+            <Avatar size={40} name={apiCourse?.createdByName ?? course?.instructor ?? 'Instructor'} variant="dark" />
             <View style={{ flex: 1 }}>
               <Text style={styles.instructorLabel}>Instructor</Text>
-              <Text style={styles.instructorName}>{course.instructor}</Text>
+              <Text style={styles.instructorName}>{apiCourse?.createdByName ?? course?.instructor ?? '—'}</Text>
             </View>
             <MessageCircle size={18} color={colors.bodyGreen} />
           </Pressable>
@@ -107,12 +134,12 @@ export function CourseDetailScreen({ course, onBack, onPlay, onEnrol }: Props) {
           {tab === 'overview' && (
             <>
               <Text style={styles.desc}>
-                A practical, paced introduction to {course.tag.toLowerCase()}. {LESSON.desc}
+                {apiCourse?.description ?? (course ? `A practical, paced introduction to ${course.tag?.toLowerCase() ?? 'this subject'}. ${LESSON.desc}` : '')}
               </Text>
               <View style={styles.featureGrid}>
                 {[
-                  { Icon: Video,    label: 'Video lessons', val: course.lessons },
-                  { Icon: Clock,    label: 'Total time',    val: course.time },
+                  { Icon: Video,    label: 'Video lessons', val: course?.lessons ?? totalLessons },
+                  { Icon: Clock,    label: 'Total time',    val: course?.time ?? `${apiCourse?.semesters?.length ?? 0} semesters` },
                   { Icon: FileText, label: 'Worksheets',    val: 8 },
                   { Icon: Award,    label: 'Certificate',   val: 'On completion' },
                 ].map(f => (
@@ -153,9 +180,9 @@ export function CourseDetailScreen({ course, onBack, onPlay, onEnrol }: Props) {
             <View style={{ gap: 14 }}>
               <View style={styles.reviewHead}>
                 <View style={{ alignItems: 'center', paddingRight: 8 }}>
-                  <Text style={styles.bigRating}>{course.rating}</Text>
+                  <Text style={styles.bigRating}>{course?.rating ?? '—'}</Text>
                   <Text style={styles.stars}>★★★★★</Text>
-                  <Text style={styles.reviewsCount}>{Math.round(course.students * 0.42)} reviews</Text>
+                  <Text style={styles.reviewsCount}>{Math.round((course?.students ?? 0) * 0.42)} reviews</Text>
                 </View>
                 <View style={{ flex: 1, gap: 4 }}>
                   {[5, 4, 3, 2, 1].map((s, i) => (
@@ -192,14 +219,14 @@ export function CourseDetailScreen({ course, onBack, onPlay, onEnrol }: Props) {
         <View style={{ flex: 1 }}>
           <Text style={styles.barLabelTop}>Course access</Text>
           <Text style={styles.barValue}>
-            {enrolled ? `Enrolled · ${course.progress}%` : 'Free with approval'}
+            {enrolled ? `Enrolled · ${course?.progress ?? 0}%` : 'Free with approval'}
           </Text>
         </View>
         {enrolled ? (
           <Button size="lg" leftIcon={<Play size={16} color={colors.white} />} onPress={onPlay}>Resume</Button>
         ) : (
           <Button size="lg" leftIcon={<Plus size={16} color={colors.white} />} onPress={() => {
-            toast.success(`Enrolment request submitted for "${course.title}".`);
+            toast.success(`Enrolment request submitted for "${title}".`);
             onEnrol();
           }}>Request enrol</Button>
         )}
@@ -234,7 +261,7 @@ function CurriculumTree({ semesters, onPlayActive }: { semesters: BuilderSemeste
                 <GraduationCap size={16} color={colors.accent} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.curSemName}>{sem.name}</Text>
+                <Text style={styles.curSemName}>{sem.title}</Text>
                 <Text style={styles.curSemMeta}>
                   {subjectCount} subject{subjectCount === 1 ? '' : 's'} · {lessonCount} lesson{lessonCount === 1 ? '' : 's'}
                 </Text>
@@ -300,7 +327,7 @@ function CurriculumLesson({
         <Text style={styles.curLessonStep}>Lesson {index}</Text>
         <Text style={styles.curLessonTitle} numberOfLines={1}>{lesson.title}</Text>
         <View style={styles.curLessonMeta}>
-          {lesson.youtubeUrl ? (
+          {lesson.url ? (
             <View style={styles.metaChip}>
               <TvMinimalPlay size={10} color={colors.error} />
               <Text style={styles.metaChipText}>Video</Text>

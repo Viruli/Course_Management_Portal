@@ -11,6 +11,8 @@ import { EnrolmentsScreen } from '../screens/admin/EnrolmentsScreen';
 import { CoursesScreen } from '../screens/admin/CoursesScreen';
 import { CourseBuilderScreen } from '../screens/admin/CourseBuilderScreen';
 import { CourseViewScreen } from '../screens/admin/CourseViewScreen';
+import { SubjectDetailScreen } from '../screens/admin/SubjectDetailScreen';
+import { LessonDetailScreen } from '../screens/admin/LessonDetailScreen';
 import { LessonEditorScreen } from '../screens/admin/LessonEditorScreen';
 import { MoreScreen } from '../screens/admin/MoreScreen';
 import { AuditScreen } from '../screens/admin/AuditScreen';
@@ -18,13 +20,11 @@ import { UsersScreen } from '../screens/superadmin/UsersScreen';
 import { UserDetailScreen } from '../screens/superadmin/UserDetailScreen';
 import { NotificationsScreen } from '../screens/student/NotificationsScreen';
 import { EditProfileScreen } from '../screens/shared/EditProfileScreen';
-import { SAMPLE_BUILDER_COURSE } from '../data/mock';
 import { useCourseBuilderStore } from '../store/courseBuilderStore';
 import { useApprovalsStore } from '../store/approvalsStore';
 import { useNotificationsStore } from '../store/notificationsStore';
 import type { Colors } from '../theme/colors';
 import { useColors, useThemedStyles } from '../theme/useThemedStyles';
-import type { Course } from '../data/types';
 
 type TabId = 'dashboard' | 'registrations' | 'enrolments' | 'courses' | 'users' | 'more';
 
@@ -76,21 +76,15 @@ function AdminMain({ navigation }: any) {
   const colors = useColors();
   const [tab, setTab] = React.useState<TabId>('dashboard');
   const initNew = useCourseBuilderStore((s) => s.initNew);
-  const load    = useCourseBuilderStore((s) => s.load);
 
-  const openCreate = () => {
-    initNew();
+  // Called after POST /courses succeeds — pre-populates builder
+  const onCourseCreated = (courseId: string, title: string, description: string, coverImageUrl: string) => {
+    initNew(courseId, title, description, coverImageUrl);
     navigation.navigate('CourseBuilder');
   };
-  const openView = (c: Course) => {
-    navigation.navigate('CourseView', { course: c });
-  };
-  const openEdit = (_c: Course) => {
-    // Same as CourseView's Edit action — start the builder from the sample
-    // course in the design build.
-    load(SAMPLE_BUILDER_COURSE);
-    navigation.navigate('CourseBuilder');
-  };
+  const openView = (courseId: string) => navigation.navigate('CourseView', { courseId });
+  const openEdit = (courseId: string) => navigation.navigate('CourseBuilder', { courseId });
+
   const goBell        = () => navigation.navigate('Notifications');
   const goAudit       = () => navigation.navigate('Audit');
   const goEditProfile = () => navigation.navigate('EditProfile');
@@ -101,7 +95,7 @@ function AdminMain({ navigation }: any) {
         {tab === 'dashboard'     && <AdminDashboardScreen onTabChange={setTab} onBell={goBell} onOpenAudit={goAudit} onOpenProfile={goEditProfile} />}
         {tab === 'registrations' && <RegistrationsScreen />}
         {tab === 'enrolments'    && <EnrolmentsScreen />}
-        {tab === 'courses'       && <CoursesScreen onCourse={openView} onEditCourse={openEdit} onCreate={openCreate} />}
+        {tab === 'courses'       && <CoursesScreen onCourse={openView} onEditCourse={openEdit} onCourseCreated={onCourseCreated} />}
         {tab === 'users'         && <UsersScreen navigation={navigation} />}
         {tab === 'more'          && (
           <MoreScreen
@@ -124,19 +118,19 @@ export function AdminTabs() {
       <Stack.Screen name="AdminMain" component={AdminMain} />
       <Stack.Screen name="CourseView">
         {({ navigation, route }) => {
-          const course = (route.params as any).course as Course;
+          const params = route.params as any;
           return (
             <CourseViewScreen
-              course={course}
+              courseId={params.courseId}
+              navigation={navigation}
               onBack={() => navigation.goBack()}
-              onEdit={() => {
-                useCourseBuilderStore.getState().load(SAMPLE_BUILDER_COURSE);
-                navigation.replace('CourseBuilder');
-              }}
+              onEdit={(courseId) => navigation.replace('CourseBuilder', { courseId })}
             />
           );
         }}
       </Stack.Screen>
+      <Stack.Screen name="SubjectDetail" component={SubjectDetailScreen as any} />
+      <Stack.Screen name="LessonDetail"  component={LessonDetailScreen  as any} />
       <Stack.Screen name="CourseBuilder" component={CourseBuilderScreen as any} />
       <Stack.Screen name="LessonEditor" component={LessonEditorScreen as any} />
       <Stack.Screen name="Audit" component={AuditScreen} />
