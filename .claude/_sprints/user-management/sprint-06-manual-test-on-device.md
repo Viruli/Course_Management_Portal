@@ -3,9 +3,9 @@
 **Plan:** [`.claude/_plan/2026-05-13-user-management.md`](../../_plan/2026-05-13-user-management.md)
 **Spec:** [`.claude/_specs/007-user-management.md`](../../_specs/007-user-management.md)
 **Branch:** `feat/user-management`
-**Status:** 🟡 Not Started
+**Status:** 🔵 In Progress
 **Estimated:** 1–2 h · **Actual:** ___
-**Started:** ___ · **Completed:** ___
+**Started:** 2026-05-14 · **Completed:** ___
 
 ---
 
