@@ -122,7 +122,10 @@ export function UserDetailScreen({ route, navigation }: Props) {
   // - Super admin: full actions on all accounts + role management
   // - Admin: view-only for other admins/super admins; can only act on students
   const isViewingStudent = appRole === 'student';
-  const canManageAccount = currentRole === 'super' || (currentRole === 'admin' && isViewingStudent);
+  // Super admin accounts cannot be suspended — there is only one super admin
+  // and suspending them would lock the platform.
+  const canManageAccount = appRole !== 'super' &&
+    (currentRole === 'super' || (currentRole === 'admin' && isViewingStudent));
   const canChangeRole    = currentRole === 'super';
 
   // useMemo is a hook — must be here, before any early returns.

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import {
   Download, CheckCircle, User, Key, BookOpen, Activity,
 } from 'lucide-react-native';
@@ -24,11 +24,15 @@ const filters: { id: FilterId; label: string }[] = [
   { id: 'warnings',  label: 'Warnings' },
 ];
 
-// Map UI filter → API category param
+// Map UI filter → API category param.
+// Note: the backend must populate the `category` field on log entries for
+// these filters to return results. If category is null on all entries,
+// only the "All" tab will show data — this is a backend data issue.
 const filterToCategory = (f: FilterId): string | undefined => {
   if (f === 'approvals') return 'enrollment';
   if (f === 'changes')   return 'user';
-  return undefined; // 'all' and 'warnings' → no filter
+  if (f === 'warnings')  return 'auth';   // auth failures, token revocations
+  return undefined;                        // 'all' → no filter
 };
 
 // Map category → icon + colour
@@ -60,10 +64,11 @@ export function AuditScreen() {
   const colors = useColors();
   const styles = useThemedStyles(createStyles);
 
-  const [entries,  setEntries]  = useState<ApiAuditEntry[]>([]);
-  const [loading,  setLoading]  = useState(true);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [filter,   setFilter]   = useState<FilterId>('all');
+  const [entries,   setEntries]   = useState<ApiAuditEntry[]>([]);
+  const [loading,   setLoading]   = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const [errorMsg,  setErrorMsg]  = useState<string | null>(null);
+  const [filter,    setFilter]    = useState<FilterId>('all');
 
   useEffect(() => {
     let cancelled = false;
@@ -89,13 +94,64 @@ export function AuditScreen() {
     return () => { cancelled = true; };
   }, [filter]);
 
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      // Fetch up to 100 entries with the active filter for the export.
+      const result = await getAuditLog({
+        category: filterToCategory(filter),
+        limit:    100,
+      });
+      const items = result.data.items ?? [];
+
+      if (items.length === 0) {
+        toast.info('No entries to export.');
+        return;
+      }
+
+      // Build a CSV string. Wrap every cell in quotes and escape inner quotes.
+      const cell = (v: string | null | undefined) =>
+        `"${String(v ?? '').replace(/"/g, '""')}"`;
+
+      const header = ['When', 'Actor', 'Action', 'Category', 'Target Type', 'Target ID', 'Request ID']
+        .map(cell).join(',');
+
+      const rows = items.map((e) =>
+        [
+          e.when,
+          e.actor?.email ?? 'System',
+          e.action,
+          e.category,
+          e.targetType,
+          e.targetId,
+          e.requestId,
+        ].map(cell).join(','),
+      );
+
+      const csv = [header, ...rows].join('\n');
+
+      await Share.share(
+        { message: csv, title: 'Audit Log Export' },
+        { dialogTitle: 'Export audit log as CSV' },
+      );
+    } catch (err) {
+      if ((err as any)?.message !== 'User did not share') {
+        toast.error('Export failed. Please try again.');
+      }
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <ScreenContainer edges={['top']} bg={colors.surface2}>
       <AppBar
         title="Audit log"
         trailing={
-          <IconBtn onPress={() => toast.info('Audit log export coming soon.')}>
-            <Download size={18} color={colors.primary} />
+          <IconBtn onPress={exporting || loading ? undefined : handleExport}>
+            {exporting
+              ? <ActivityIndicator size="small" color={colors.primary} />
+              : <Download size={18} color={loading ? colors.muted : colors.primary} />}
           </IconBtn>
         }
       />

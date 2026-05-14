@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import {
-  LayoutDashboard, UserPlus, ClipboardList, BookOpen, Menu,
+  LayoutDashboard, UserPlus, ClipboardList, BookOpen, Users as UsersIco, Menu,
 } from 'lucide-react-native';
 import { AdminDashboardScreen } from '../screens/admin/AdminDashboardScreen';
 import { RegistrationsScreen } from '../screens/admin/RegistrationsScreen';
@@ -26,7 +26,7 @@ import type { Colors } from '../theme/colors';
 import { useColors, useThemedStyles } from '../theme/useThemedStyles';
 import type { Course } from '../data/types';
 
-type TabId = 'dashboard' | 'registrations' | 'enrolments' | 'courses' | 'more';
+type TabId = 'dashboard' | 'registrations' | 'enrolments' | 'courses' | 'users' | 'more';
 
 const Stack = createNativeStackNavigator();
 
@@ -35,6 +35,7 @@ const baseTabs: { id: TabId; label: string; Icon: any }[] = [
   { id: 'registrations', label: 'Sign-ups', Icon: UserPlus },
   { id: 'enrolments',    label: 'Enrols',   Icon: ClipboardList },
   { id: 'courses',       label: 'Courses',  Icon: BookOpen },
+  { id: 'users',         label: 'Users',    Icon: UsersIco },
   { id: 'more',          label: 'More',     Icon: Menu },
 ];
 
@@ -90,9 +91,8 @@ function AdminMain({ navigation }: any) {
     load(SAMPLE_BUILDER_COURSE);
     navigation.navigate('CourseBuilder');
   };
-  const goBell       = () => navigation.navigate('Notifications');
-  const goAudit      = () => navigation.navigate('Audit');
-  const goStudents   = () => navigation.navigate('Users');
+  const goBell        = () => navigation.navigate('Notifications');
+  const goAudit       = () => navigation.navigate('Audit');
   const goEditProfile = () => navigation.navigate('EditProfile');
 
   return (
@@ -102,12 +102,13 @@ function AdminMain({ navigation }: any) {
         {tab === 'registrations' && <RegistrationsScreen />}
         {tab === 'enrolments'    && <EnrolmentsScreen />}
         {tab === 'courses'       && <CoursesScreen onCourse={openView} onEditCourse={openEdit} onCreate={openCreate} />}
+        {tab === 'users'         && <UsersScreen navigation={navigation} />}
         {tab === 'more'          && (
           <MoreScreen
             role="admin"
             onOpenAudit={goAudit}
             onOpenCourses={() => setTab('courses')}
-            onOpenStudents={goStudents}
+            onOpenStudents={() => setTab('users')}
             onEditProfile={goEditProfile}
           />
         )}
@@ -139,7 +140,6 @@ export function AdminTabs() {
       <Stack.Screen name="CourseBuilder" component={CourseBuilderScreen as any} />
       <Stack.Screen name="LessonEditor" component={LessonEditorScreen as any} />
       <Stack.Screen name="Audit" component={AuditScreen} />
-      <Stack.Screen name="Users" component={UsersScreen as any} />
       <Stack.Screen name="UserDetail" component={UserDetailScreen as any} />
       <Stack.Screen name="Notifications">
         {({ navigation }) => (
