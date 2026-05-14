@@ -3,9 +3,9 @@
 **Plan:** [`.claude/_plan/2026-05-13-course-builder-api.md`](../../_plan/2026-05-13-course-builder-api.md)
 **Spec:** [`.claude/_specs/004-course-builder-api.md`](../../_specs/004-course-builder-api.md)
 **Branch:** `feat/course-builder-api`
-**Status:** 🟡 Not Started
+**Status:** 🔵 In Progress
 **Estimated:** 2 h · **Actual:** ___
-**Started:** ___ · **Completed:** ___
+**Started:** 2026-05-14 · **Completed:** ___
 
 ---
 
