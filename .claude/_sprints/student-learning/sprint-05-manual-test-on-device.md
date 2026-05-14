@@ -3,7 +3,7 @@
 **Plan:** [`.claude/_plan/2026-05-13-student-learning.md`](../../_plan/2026-05-13-student-learning.md)
 **Spec:** [`.claude/_specs/005-student-learning.md`](../../_specs/005-student-learning.md)
 **Branch:** `feat/student-learning`
-**Status:** 🟡 Not Started
+**Status:** 🔵 In Progress
 **Estimated:** 2 h · **Actual:** ___
 **Started:** ___ · **Completed:** ___
 
