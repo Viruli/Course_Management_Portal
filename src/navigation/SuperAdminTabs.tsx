@@ -118,6 +118,7 @@ function SuperMain({ navigation }: any) {
             role="super"
             onOpenAudit={goAudit}
             onOpenCourses={() => setTab('courses')}
+            onOpenStudents={() => setTab('users')}
             onOpenAdmins={goAdmins}
             onEditProfile={goEditProfile}
           />

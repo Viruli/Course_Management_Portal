@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View,
+  ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -55,7 +55,8 @@ export function UserDetailScreen({ route, navigation }: Props) {
   const [apiLoading,   setApiLoading]   = useState(true);
   const [suspending,   setSuspending]   = useState(false);
   const [reactivating, setReactivating] = useState(false);
-  const [promoting,    setPromoting]    = useState(false);
+  const [promoting,         setPromoting]         = useState(false);
+  const [showPromoteModal,  setShowPromoteModal]  = useState(false);
 
   const currentRole = useAppStore((s) => s.role);
 
@@ -160,36 +161,25 @@ export function UserDetailScreen({ route, navigation }: Props) {
 
   // ── Handlers (non-hook) ────────────────────────────────────────────────────
 
-  const handlePromote = () => {
-    Alert.alert(
-      'Promote to admin?',
-      `${displayName} will gain full admin access while keeping their student enrollments and progress.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Promote',
-          style: 'default',
-          onPress: async () => {
-            setPromoting(true);
-            try {
-              await promoteToAdmin(uid);
-              toast.success(`${displayName} promoted to admin.`);
-              navigation.goBack();
-            } catch (err) {
-              if (err instanceof ApiError) {
-                if (err.code === 'INVALID_ROLE') toast.error('Only student accounts can be promoted to admin.');
-                else if (err.code === 'USER_NOT_FOUND') toast.error('User not found.');
-                else toast.error(err.message);
-              } else {
-                toast.error('Something went wrong. Please try again.');
-              }
-            } finally {
-              setPromoting(false);
-            }
-          },
-        },
-      ],
-    );
+  const handleConfirmPromote = async () => {
+    setShowPromoteModal(false);
+    setPromoting(true);
+    try {
+      await promoteToAdmin(uid);
+      user && changeRole(user.uid, 'admin');
+      toast.success(`${displayName} promoted to admin.`);
+      navigation.goBack();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.code === 'INVALID_ROLE') toast.error('Only student accounts can be promoted to admin.');
+        else if (err.code === 'USER_NOT_FOUND') toast.error('User not found.');
+        else toast.error(err.message);
+      } else {
+        toast.error('Something went wrong. Please try again.');
+      }
+    } finally {
+      setPromoting(false);
+    }
   };
 
   const handleRoleChosen = (newRole: AppRole) => {
@@ -283,7 +273,10 @@ export function UserDetailScreen({ route, navigation }: Props) {
             </View>
           </View>
           {canChangeRole && (
-            <Pressable style={styles.changeRoleBtn} onPress={() => setSheetOpen(true)}>
+            <Pressable
+              style={styles.changeRoleBtn}
+              onPress={() => isViewingStudent ? setShowPromoteModal(true) : setSheetOpen(true)}
+            >
               <Text style={styles.changeRoleText}>Change role</Text>
               {suggestedRole ? (
                 <View style={styles.suggestChip}>
@@ -302,17 +295,6 @@ export function UserDetailScreen({ route, navigation }: Props) {
         {canManageAccount ? (
           <View style={styles.card}>
             <Text style={styles.sectionLabel}>Account</Text>
-            {/* Promote to admin — super admin only, student accounts only */}
-            {canChangeRole && isViewingStudent && (
-              <Button
-                variant="secondary" full size="lg"
-                leftIcon={<ShieldCheck size={16} color={colors.primary} />}
-                disabled={promoting}
-                onPress={handlePromote}
-              >
-                {promoting ? 'Promoting…' : 'Promote to admin'}
-              </Button>
-            )}
             {(apiUser?.status === 'approved' || user?.status === 'active') && (
               <Button
                 variant="secondary" full size="lg"
@@ -357,6 +339,39 @@ export function UserDetailScreen({ route, navigation }: Props) {
           </View>
         )}
       </ScrollView>
+
+      {/* Promote to admin confirmation modal */}
+      <Modal transparent animationType="fade" visible={showPromoteModal} onRequestClose={() => setShowPromoteModal(false)}>
+        <Pressable style={styles.dialogBackdrop} onPress={() => !promoting && setShowPromoteModal(false)}>
+          <Pressable style={styles.dialog} onPress={(e) => e.stopPropagation()}>
+            <View style={[styles.dialogIco, { backgroundColor: colors.successBg }]}>
+              <ShieldCheck size={24} color={colors.successDeep} />
+            </View>
+            <Text style={styles.dialogTitle}>Promote to Admin?</Text>
+            <Text style={styles.dialogBody}>
+              <Text style={{ fontWeight: '700' }}>{displayName}</Text>
+              {' '}will gain full admin access (course authoring, approvals) while keeping their existing student enrollments and progress.
+            </Text>
+            <View style={styles.dialogActions}>
+              <View style={{ flex: 1 }}>
+                <Button variant="secondary" full size="lg" disabled={promoting} onPress={() => setShowPromoteModal(false)}>
+                  Cancel
+                </Button>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Button
+                  full size="lg"
+                  leftIcon={<ShieldCheck size={16} color={colors.white} />}
+                  disabled={promoting}
+                  onPress={handleConfirmPromote}
+                >
+                  {promoting ? 'Promoting…' : 'Promote'}
+                </Button>
+              </View>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Role selector bottom sheet */}
       <Modal

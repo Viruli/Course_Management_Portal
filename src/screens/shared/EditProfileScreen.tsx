@@ -43,18 +43,24 @@ export function EditProfileScreen({ role, onBack }: Props) {
   const [firstName, setFirstName] = useState(apiProfile?.firstName ?? mockProfile.firstName);
   const [lastName,  setLastName]  = useState(apiProfile?.lastName  ?? mockProfile.lastName);
 
+  const [currentPwd, setCurrentPwd] = useState('');
   const [newPwd,     setNewPwd]     = useState('');
   const [confirmPwd, setConfirmPwd] = useState('');
   const [pwdSection, setPwdSection] = useState(false);
   const [saving,     setSaving]     = useState(false);
   const [pwdFieldError, setPwdFieldError] = useState<string | null>(null);
 
-  const profile = mockProfile; // used for photo URI + joined date display
+  // Resolved display values: real API data takes priority over mock.
+  const displayName = apiProfile
+    ? `${apiProfile.firstName} ${apiProfile.lastName}`.trim()
+    : fullName(mockProfile);
+  // Photo: user's in-session pick (local URI) overrides the persistent backend URL.
+  const resolvedPhotoUri = mockProfile.photoUri ?? apiProfile?.profilePhotoUrl ?? undefined;
 
   const passwordMismatch  = newPwd.length > 0 && confirmPwd.length > 0 && newPwd !== confirmPwd;
   const passwordPolicyOk  = PASSWORD_RULE.test(newPwd);
   const passwordSectionValid = !pwdSection || (newPwd.length === 0) ||
-    (passwordPolicyOk && newPwd === confirmPwd);
+    (currentPwd.length > 0 && passwordPolicyOk && newPwd === confirmPwd);
 
   const handlePickPhoto = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -106,20 +112,26 @@ export function EditProfileScreen({ role, onBack }: Props) {
       } else {
         // Mock update when real auth not yet wired
         update(role, {
-          firstName: firstName.trim() || profile.firstName,
-          lastName:  lastName.trim()  || profile.lastName,
+          firstName: firstName.trim() || mockProfile.firstName,
+          lastName:  lastName.trim()  || mockProfile.lastName,
         });
       }
 
       // Step 2: Change password if the section is open and has a new value
-      if (pwdSection && newPwd && passwordPolicyOk && newPwd === confirmPwd) {
+      if (pwdSection && newPwd && currentPwd && passwordPolicyOk && newPwd === confirmPwd) {
         try {
-          await changePasswordApi(newPwd);
-          setNewPwd(''); setConfirmPwd('');
+          await changePasswordApi(currentPwd, newPwd);
+          setCurrentPwd(''); setNewPwd(''); setConfirmPwd('');
           toast.success('Profile and password updated.');
         } catch (pwdErr) {
-          if (pwdErr instanceof ApiError && pwdErr.code === 'VALIDATION_ERROR') {
-            setPwdFieldError(pwdErr.details?.newPassword?.[0] ?? pwdErr.message);
+          if (pwdErr instanceof ApiError) {
+            if (pwdErr.code === 'VALIDATION_ERROR') {
+              setPwdFieldError(pwdErr.details?.newPassword?.[0] ?? pwdErr.details?.currentPassword?.[0] ?? pwdErr.message);
+            } else if (pwdErr.code === 'INVALID_PASSWORD' || pwdErr.code === 'WRONG_PASSWORD') {
+              setPwdFieldError('Current password is incorrect.');
+            } else {
+              setPwdFieldError(pwdErr.message);
+            }
           } else {
             toast.error('Profile saved but password change failed. Please try again.');
           }
@@ -153,9 +165,9 @@ export function EditProfileScreen({ role, onBack }: Props) {
           <View style={styles.avatarWrap}>
             <Avatar
               size={96}
-              name={fullName(profile)}
+              name={displayName}
               variant={role === 'super' ? 'lime' : role === 'admin' ? 'dark' : 'default'}
-              photoUri={profile.photoUri}
+              photoUri={resolvedPhotoUri}
             />
             <View style={styles.cameraBadge}>
               <Camera size={14} color={colors.primary} />
@@ -170,7 +182,7 @@ export function EditProfileScreen({ role, onBack }: Props) {
               <Camera size={14} color={colors.primary} />
               <Text style={styles.photoBtnText}>Take photo</Text>
             </Pressable>
-            {profile.photoUri ? (
+            {resolvedPhotoUri ? (
               <Pressable
                 style={[styles.photoBtn, { backgroundColor: colors.errorBg }]}
                 onPress={() => setPhoto(role, undefined)}
@@ -196,7 +208,7 @@ export function EditProfileScreen({ role, onBack }: Props) {
           <View style={{ gap: 6 }}>
             <Text style={styles.fieldLabel}>Email</Text>
             <View style={styles.readOnly}>
-              <Text style={styles.readOnlyText}>{profile.email}</Text>
+              <Text style={styles.readOnlyText}>{apiProfile?.email ?? mockProfile.email}</Text>
               <Text style={styles.readOnlyHint}>Email can't be changed.</Text>
             </View>
           </View>
@@ -206,7 +218,10 @@ export function EditProfileScreen({ role, onBack }: Props) {
         <View style={styles.section}>
           <Pressable
             style={styles.pwdHead}
-            onPress={() => setPwdSection((v) => !v)}
+            onPress={() => {
+              setPwdSection((v) => !v);
+              setCurrentPwd(''); setNewPwd(''); setConfirmPwd(''); setPwdFieldError(null);
+            }}
           >
             <View style={styles.pwdHeadIco}>
               <KeyRound size={16} color={colors.primary} />
@@ -222,6 +237,13 @@ export function EditProfileScreen({ role, onBack }: Props) {
 
           {pwdSection ? (
             <View style={{ gap: 12, marginTop: 4 }}>
+              <Input
+                label="Current password"
+                value={currentPwd}
+                onChangeText={(t) => { setCurrentPwd(t); setPwdFieldError(null); }}
+                password
+                placeholder="Enter your current password"
+              />
               <Input
                 label="New password"
                 value={newPwd}

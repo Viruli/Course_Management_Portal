@@ -15,11 +15,14 @@ export function updateMyProfile(patch: UpdateProfilePayload): Promise<ApiResult<
   });
 }
 
-export function changePassword(newPassword: string): Promise<ApiResult<{ message: string }>> {
+export function changePassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<ApiResult<{ message: string }>> {
   return apiFetch<{ message: string }>('/me/change-password', {
     method: 'POST',
-    body: { newPassword },
+    body: { currentPassword, newPassword },
     tag: 'profile.changePassword',
-    redactFields: ['newPassword'],
+    redactFields: ['currentPassword', 'newPassword'],
   });
 }

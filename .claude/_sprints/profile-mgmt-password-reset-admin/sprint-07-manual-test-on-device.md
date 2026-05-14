@@ -3,9 +3,9 @@
 **Plan:** [`.claude/_plan/2026-05-13-profile-mgmt-password-reset-admin.md`](../../_plan/2026-05-13-profile-mgmt-password-reset-admin.md)
 **Spec:** [`.claude/_specs/002-profile-mgmt-password-reset-admin.md`](../../_specs/002-profile-mgmt-password-reset-admin.md)
 **Branch:** `feat/profile-mgmt-password-reset-admin`
-**Status:** 🟡 Not Started
+**Status:** 🔵 In Progress
 **Estimated:** 1–2 h · **Actual:** ___
-**Started:** ___ · **Completed:** ___
+**Started:** 2026-05-14 · **Completed:** ___
 
 ---
 
