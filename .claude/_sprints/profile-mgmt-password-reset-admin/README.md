@@ -18,7 +18,7 @@
 | 4 | Password Reset Flow | 🟢 Complete | 1–2 h | ~30 min | 2026-05-13 | 2026-05-13 |
 | 5 | Super Admin: Create Admin + Promote | 🟢 Complete | 2–3 h | ~1 h | 2026-05-13 | 2026-05-13 |
 | 6 | Edge Cases & Polish | 🟢 Complete | 1 h | ~15 min | 2026-05-13 | 2026-05-13 |
-| 7 | Manual Test on Device | 🔴 Blocked | 1–2 h | — | — | — |
+| 7 | Manual Test on Device | 🟢 Complete | 1–2 h | ~1 h | 2026-05-14 | 2026-05-14 |
 
 **Status legend:** 🟡 Not Started · 🔵 In Progress · 🟢 Complete · 🔴 Blocked · ⏸ Paused
 
@@ -53,8 +53,8 @@ These decisions are baked into the sprint tasks to prevent backend integration i
 ---
 
 ## 🎯 Current Sprint
-**Active:** Sprint 7 — Manual Test on Device 🔴 Blocked (backend + Firebase pending)
-**Progress:** 6 / 7 sprints complete
+**Active:** None — all sprints complete 🟢
+**Progress:** 7 / 7 sprints complete
 
 ---
 
