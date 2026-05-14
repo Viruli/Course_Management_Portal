@@ -1,12 +1,13 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Modal, Pressable, ScrollView, StyleSheet, Text, View,
+  ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ArrowLeft, ShieldCheck, Shield, GraduationCap, Check,
   CircleSlash, RotateCcw, AlertTriangle, ChevronRight,
   Mail, Calendar, Activity, ArrowUpRight, ArrowDownRight,
+  BookOpen,
 } from 'lucide-react-native';
 import { ScreenContainer } from '../../components/ScreenContainer';
 import { AppBar } from '../../components/AppBar';
@@ -15,10 +16,14 @@ import { Avatar } from '../../components/Avatar';
 import { Button } from '../../components/Button';
 import { Badge } from '../../components/Badge';
 import { Eyebrow } from '../../components/Eyebrow';
+import { Progress } from '../../components/Progress';
 import type { Colors } from '../../theme/colors';
 import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
 import { useUsersStore } from '../../store/usersStore';
+import { useAppStore } from '../../store/appStore';
 import { toast } from '../../store/uiStore';
+import { getUserById, suspendUser, reactivateUser, ApiUserDetail } from '../../services/userManagement';
+import { ApiError } from '../../services/api';
 import type { AppRole } from '../../data/types';
 
 interface Props {
@@ -43,10 +48,104 @@ export function UserDetailScreen({ route, navigation }: Props) {
   const suspend   = useUsersStore((s) => s.suspend);
   const reinstate = useUsersStore((s) => s.reinstate);
 
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [confirmRole, setConfirmRole] = useState<AppRole | null>(null);
+  const [sheetOpen,    setSheetOpen]    = useState(false);
+  const [confirmRole,  setConfirmRole]  = useState<AppRole | null>(null);
+  const [apiUser,      setApiUser]      = useState<ApiUserDetail | null>(null);
+  const [apiLoading,   setApiLoading]   = useState(true);
+  const [suspending,   setSuspending]   = useState(false);
+  const [reactivating, setReactivating] = useState(false);
 
-  if (!user) {
+  const currentRole = useAppStore((s) => s.role);
+
+  useEffect(() => {
+    let cancelled = false;
+    getUserById(uid).then((r) => {
+      if (!cancelled) { setApiUser(r.data); setApiLoading(false); }
+    }).catch(() => {
+      if (!cancelled) setApiLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [uid]);
+
+  const handleSuspend = async () => {
+    setSuspending(true);
+    try {
+      await suspendUser(uid);
+      setApiUser((prev) => prev ? { ...prev, status: 'suspended' } : prev);
+      user && suspend(uid);  // keep mock store in sync
+      toast.success(`${apiUser?.firstName ?? user?.name ?? 'User'} suspended.`);
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'ALREADY_SUSPENDED') {
+        toast.error('This account is already suspended.');
+      } else {
+        toast.error('Could not suspend. Please try again.');
+      }
+    } finally {
+      setSuspending(false);
+    }
+  };
+
+  const handleReactivate = async () => {
+    setReactivating(true);
+    try {
+      await reactivateUser(uid);
+      setApiUser((prev) => prev ? { ...prev, status: 'approved' } : prev);
+      user && reinstate(uid);  // keep mock store in sync
+      toast.success(`${apiUser?.firstName ?? user?.name ?? 'User'} reactivated.`);
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'ALREADY_ACTIVE') {
+        toast.error('This account is already active.');
+      } else {
+        toast.error('Could not reactivate. Please try again.');
+      }
+    } finally {
+      setReactivating(false);
+    }
+  };
+
+  // ── All derived values and hooks below this line must run on EVERY render
+  //    (before any conditional early returns) to satisfy React's rules of hooks.
+
+  // API data is the source of truth; fall back to mock store for fields the
+  // API doesn't expose (joined date, role-change UX).
+  const displayName   = apiUser ? `${apiUser.firstName} ${apiUser.lastName}` : (user?.name ?? '');
+  const displayEmail  = apiUser?.email  ?? user?.email  ?? '';
+  const displayRole   = apiUser?.role   ?? (user?.role === 'super' ? 'super_admin' : user?.role ?? 'student');
+  const displayStatus = apiUser?.status ?? (user?.status === 'pending' ? 'pending_approval' : user?.status === 'suspended' ? 'suspended' : 'approved');
+
+  // Map role string → display metadata (handles both 'super_admin' and 'super').
+  const appRole: AppRole = displayRole === 'super_admin' ? 'super' : (displayRole as AppRole);
+  const meta    = roleMeta[appRole] ?? roleMeta.student;
+  const RoleIcon = meta.Icon;
+
+  // Permission rules:
+  // - Super admin: full actions on all accounts + role management
+  // - Admin: view-only for other admins/super admins; can only act on students
+  const isViewingStudent = appRole === 'student';
+  // Super admin accounts cannot be suspended — there is only one super admin
+  // and suspending them would lock the platform.
+  const canManageAccount = appRole !== 'super' &&
+    (currentRole === 'super' || (currentRole === 'admin' && isViewingStudent));
+  const canChangeRole    = currentRole === 'super';
+
+  // useMemo is a hook — must be here, before any early returns.
+  const suggestedRole: AppRole | null = useMemo(() => {
+    if (appRole === 'student') return 'admin';
+    if (appRole === 'admin')   return 'super';
+    return null;
+  }, [appRole]);
+
+  // ── Early returns (all hooks already called above) ─────────────────────────
+  if (apiLoading) {
+    return (
+      <ScreenContainer edges={['top']}>
+        <AppBar title="User" leading={<IconBtn onPress={() => navigation.goBack()}><ArrowLeft size={20} color={colors.primary} /></IconBtn>} />
+        <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />
+      </ScreenContainer>
+    );
+  }
+
+  if (!apiUser && !user) {
     return (
       <ScreenContainer edges={['top']}>
         <AppBar title="User" leading={<IconBtn onPress={() => navigation.goBack()}><ArrowLeft size={20} color={colors.primary} /></IconBtn>} />
@@ -57,27 +156,17 @@ export function UserDetailScreen({ route, navigation }: Props) {
     );
   }
 
-  const meta = roleMeta[user.role];
-  const RoleIcon = meta.Icon;
-
-  // Highlight the "interesting" target role (e.g. Student → Admin) to make
-  // the convert-to-admin flow more discoverable.
-  const suggestedRole: AppRole | null = useMemo(() => {
-    if (user.role === 'student') return 'admin';
-    if (user.role === 'admin')   return 'super';
-    return null;
-  }, [user.role]);
+  // ── Handlers (non-hook) ────────────────────────────────────────────────────
 
   const handleRoleChosen = (newRole: AppRole) => {
+    if (!user) return;
     setSheetOpen(false);
     if (newRole === user.role) return;
-    // Defer the confirmation modal to the next frame so the sheet has time
-    // to dismiss before we layer another modal on top.
     requestAnimationFrame(() => setConfirmRole(newRole));
   };
 
   const confirmRoleChange = () => {
-    if (!confirmRole) return;
+    if (!confirmRole || !user) return;
     const willTransfer =
       confirmRole === 'super' && !!currentSuper && currentSuper.uid !== user.uid;
     const previousSuperName = currentSuper?.name;
@@ -99,17 +188,17 @@ export function UserDetailScreen({ route, navigation }: Props) {
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
         {/* Profile header */}
         <View style={styles.profile}>
-          <Avatar size={84} name={user.name} variant={user.role === 'super' ? 'lime' : user.role === 'admin' ? 'dark' : 'default'} />
-          <Text style={styles.name}>{user.name}</Text>
-          <Text style={styles.email}>{user.email}</Text>
+          <Avatar size={84} name={displayName} variant={appRole === 'super' ? 'lime' : appRole === 'admin' ? 'dark' : 'default'} />
+          <Text style={styles.name}>{displayName}</Text>
+          <Text style={styles.email}>{displayEmail}</Text>
           <View style={{ marginTop: 6 }}>
             <Eyebrow lime icon={<RoleIcon size={11} color={colors.primary} />}>
               {meta.label}
             </Eyebrow>
           </View>
-          {user.status !== 'active' && (
+          {(displayStatus === 'pending_approval' || displayStatus === 'suspended') && (
             <View style={{ marginTop: 8 }}>
-              {user.status === 'pending' ? (
+              {displayStatus === 'pending_approval' ? (
                 <Badge tone="warning">Pending approval</Badge>
               ) : (
                 <Badge tone="error">Account suspended</Badge>
@@ -120,18 +209,33 @@ export function UserDetailScreen({ route, navigation }: Props) {
 
         {/* Profile fields */}
         <View style={styles.card}>
-          <DetailRow Icon={Mail}     label="Email"        value={user.email} />
-          <DetailRow Icon={Calendar} label="Joined"       value={user.joined} />
-          <DetailRow Icon={Activity} label="Last active"  value={user.lastActive} />
-          {user.role === 'student' && user.enrolled != null && (
-            <DetailRow Icon={GraduationCap} label="Courses enrolled" value={String(user.enrolled)} last />
-          )}
-          {user.role !== 'student' && user.managesCourses != null && (
-            <DetailRow Icon={Shield} label="Courses managed" value={String(user.managesCourses)} last />
-          )}
+          <DetailRow Icon={Mail}     label="Email"   value={displayEmail} />
+          <DetailRow Icon={Calendar} label="Joined"  value={user?.joined ?? (apiUser?.createdAt ? new Date(apiUser.createdAt).toLocaleDateString() : '—')} />
+          <DetailRow Icon={Activity} label="Status"  value={displayStatus} last />
+
+          {/* Real enrollment history from API */}
+          {apiLoading ? (
+            <ActivityIndicator size="small" color={colors.muted} style={{ marginTop: 8 }} />
+          ) : apiUser?.enrollments?.length ? (
+            <View style={{ gap: 6, marginTop: 8 }}>
+              <Text style={styles.sectionLabel}>Enrollments</Text>
+              {apiUser.enrollments.map((e) => (
+                <View key={e.courseId} style={styles.enrollRow}>
+                  <BookOpen size={14} color={colors.bodyGreen} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.enrollTitle} numberOfLines={1}>{e.courseTitle}</Text>
+                    {e.completionPercent > 0 ? (
+                      <Progress pct={e.completionPercent} />
+                    ) : null}
+                  </View>
+                  <Text style={styles.enrollPct}>{e.completionPercent.toFixed(0)}%</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
         </View>
 
-        {/* Role management */}
+        {/* Role & permissions — super admins only; admins are view-only */}
         <View style={styles.card}>
           <Text style={styles.sectionLabel}>Role & permissions</Text>
           <View style={styles.currentRole}>
@@ -144,51 +248,69 @@ export function UserDetailScreen({ route, navigation }: Props) {
               <Text style={styles.currentRoleDesc}>{meta.desc}</Text>
             </View>
           </View>
-          <Pressable style={styles.changeRoleBtn} onPress={() => setSheetOpen(true)}>
-            <Text style={styles.changeRoleText}>Change role</Text>
-            {suggestedRole ? (
-              <View style={styles.suggestChip}>
-                <Text style={styles.suggestChipText}>
-                  Promote to {roleMeta[suggestedRole].label}
-                </Text>
-                <ArrowUpRight size={11} color={colors.primary} />
-              </View>
-            ) : null}
-            <ChevronRight size={16} color={colors.primary} />
-          </Pressable>
+          {canChangeRole && (
+            <Pressable style={styles.changeRoleBtn} onPress={() => setSheetOpen(true)}>
+              <Text style={styles.changeRoleText}>Change role</Text>
+              {suggestedRole ? (
+                <View style={styles.suggestChip}>
+                  <Text style={styles.suggestChipText}>
+                    Promote to {roleMeta[suggestedRole].label}
+                  </Text>
+                  <ArrowUpRight size={11} color={colors.primary} />
+                </View>
+              ) : null}
+              <ChevronRight size={16} color={colors.primary} />
+            </Pressable>
+          )}
         </View>
 
-        {/* Account actions */}
-        <View style={styles.card}>
-          <Text style={styles.sectionLabel}>Account</Text>
-          {user.status === 'pending' && (
-            <Button
-              full size="lg"
-              leftIcon={<Check size={16} color={colors.white} />}
-              onPress={() => approve(user.uid)}
-            >
-              Approve account
-            </Button>
-          )}
-          {user.status === 'active' && (
-            <Button
-              variant="secondary" full size="lg"
-              leftIcon={<CircleSlash size={16} color={colors.error} />}
-              onPress={() => suspend(user.uid)}
-            >
-              Suspend account
-            </Button>
-          )}
-          {user.status === 'suspended' && (
-            <Button
-              full size="lg"
-              leftIcon={<RotateCcw size={16} color={colors.white} />}
-              onPress={() => reinstate(user.uid)}
-            >
-              Reinstate account
-            </Button>
-          )}
-        </View>
+        {/* Account actions — admins can only act on students; super admins can act on anyone */}
+        {canManageAccount ? (
+          <View style={styles.card}>
+            <Text style={styles.sectionLabel}>Account</Text>
+            {(apiUser?.status === 'approved' || user?.status === 'active') && (
+              <Button
+                variant="secondary" full size="lg"
+                leftIcon={<CircleSlash size={16} color={colors.error} />}
+                disabled={suspending}
+                onPress={handleSuspend}
+              >
+                {suspending ? 'Suspending…' : 'Suspend account'}
+              </Button>
+            )}
+            {(apiUser?.status === 'suspended' || user?.status === 'suspended') && (
+              <Button
+                full size="lg"
+                leftIcon={<RotateCcw size={16} color={colors.white} />}
+                disabled={reactivating}
+                onPress={handleReactivate}
+              >
+                {reactivating ? 'Reactivating…' : 'Reinstate account'}
+              </Button>
+            )}
+            {user?.status === 'pending' && (
+              <Button
+                full size="lg"
+                leftIcon={<Check size={16} color={colors.white} />}
+                onPress={() => user && approve(user.uid)}
+              >
+                Approve account
+              </Button>
+            )}
+            {displayStatus === 'pending_approval' && !user && (
+              <Button variant="secondary" full size="lg" disabled>
+                Pending approval
+              </Button>
+            )}
+          </View>
+        ) : (
+          <View style={styles.card}>
+            <Text style={styles.sectionLabel}>Account</Text>
+            <Text style={styles.viewOnlyNote}>
+              You can view this profile but cannot perform account actions on {meta.label.toLowerCase()} accounts.
+            </Text>
+          </View>
+        )}
       </ScrollView>
 
       {/* Role selector bottom sheet */}
@@ -203,15 +325,15 @@ export function UserDetailScreen({ route, navigation }: Props) {
             <Pressable style={styles.sheetPanel} onPress={(e) => e.stopPropagation()}>
               <View style={styles.sheetHandle} />
               <Text style={styles.sheetTitle}>Change role</Text>
-              <Text style={styles.sheetSub}>{user.name} · {user.email}</Text>
+              <Text style={styles.sheetSub}>{displayName} · {displayEmail}</Text>
               <View style={{ gap: 8, marginTop: 14 }}>
                 {(['student', 'admin', 'super'] as AppRole[]).map((r) => {
                   const m = roleMeta[r];
                   const Icon = m.Icon;
-                  const isCurrent = r === user.role;
+                  const isCurrent = r === appRole;
                   // For the Super Admin row, surface that the role is
                   // exclusive and currently held by someone else.
-                  const isTransfer = r === 'super' && !!currentSuper && currentSuper.uid !== user.uid;
+                  const isTransfer = r === 'super' && !!currentSuper && currentSuper.uid !== user?.uid;
                   return (
                     <Pressable
                       key={r}
@@ -266,9 +388,9 @@ export function UserDetailScreen({ route, navigation }: Props) {
               <AlertTriangle size={24} color={colors.warning} />
             </View>
             <Text style={styles.dialogTitle}>
-              {confirmRole === 'super' && currentSuper && currentSuper.uid !== user.uid
+              {confirmRole === 'super' && currentSuper && currentSuper.uid !== user?.uid
                 ? 'Transfer Super Admin?'
-                : confirmRole === 'admin' && user.role === 'student' ? 'Promote to Admin?'
+                : confirmRole === 'admin' && appRole === 'student' ? 'Promote to Admin?'
                 : confirmRole === 'super' ? 'Promote to Super Admin?'
                 : confirmRole === 'student' ? 'Demote to Student?'
                 : 'Change role?'}
@@ -276,11 +398,11 @@ export function UserDetailScreen({ route, navigation }: Props) {
             <Text style={styles.dialogBody}>
               {confirmRole && (
                 <>
-                  This changes <Text style={{ fontWeight: '700' }}>{user.name}</Text>'s role from{' '}
+                  This changes <Text style={{ fontWeight: '700' }}>{displayName}</Text>'s role from{' '}
                   <Text style={{ fontWeight: '700' }}>{meta.label}</Text> to{' '}
                   <Text style={{ fontWeight: '700' }}>{roleMeta[confirmRole].label}</Text>.
                   {confirmRole === 'admin' && '\n\nThey will gain access to course authoring and sign-up/enrolment approvals.'}
-                  {confirmRole === 'super' && currentSuper && currentSuper.uid !== user.uid
+                  {confirmRole === 'super' && currentSuper && currentSuper.uid !== user?.uid
                     ? `\n\nOnly one Super Admin can exist. ${currentSuper.name} will be demoted to Admin.`
                     : confirmRole === 'super' ? '\n\nThey will gain full platform oversight including user management.' : ''}
                   {confirmRole === 'student' && '\n\nThey will lose all admin/super admin permissions.'}
@@ -344,6 +466,10 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     borderColor: colors.stroke, borderWidth: 1,
   },
   sectionLabel: { fontSize: 11, fontWeight: '700', color: colors.bodyGreen, letterSpacing: 0.6, textTransform: 'uppercase' },
+  enrollRow:    { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  enrollTitle:  { fontSize: 12, color: colors.primary, flex: 1 },
+  enrollPct:    { fontSize: 11, color: colors.bodyGreen, fontWeight: '600' },
+  viewOnlyNote: { fontSize: 12, color: colors.muted, lineHeight: 17 },
 
   detailRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
   detailRowBorder: { borderBottomColor: colors.stroke2, borderBottomWidth: StyleSheet.hairlineWidth },
