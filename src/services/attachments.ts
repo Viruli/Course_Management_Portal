@@ -3,14 +3,16 @@ import { getAuthToken } from './getAuthToken';
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
 
+// v1.2.0 §17 Attachment data model.
 export interface ApiAttachment {
   id:          string;
   subjectId:   string;
-  fileName:    string;
+  courseId:    string;
+  filename:    string;
   mimeType:    string;
   sizeBytes:   number;
-  uploadedBy:  string;
-  uploadedAt:  string;
+  storagePath: string;
+  createdAt:   string;
 }
 
 // Accepted MIME types per API spec §7.1

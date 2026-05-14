@@ -121,16 +121,12 @@ export const SAMPLE_USERS: AppUser[] = [
 export const SAMPLE_BUILDER_COURSE: BuilderCourse = {
   id: 'math',
   title: 'Mathematics Foundations',
+  description: 'A practical, paced introduction to algebra, geometry and statistics.',
   coverImageUrl: '',
-  type: 'Mathematics',
-  description:
-    'A practical, paced introduction to algebra, geometry and statistics. ' +
-    "You'll cover slope-intercept form, solving for x, and graphing — " +
-    'with worked examples drawn from past practice papers.',
   semesters: [
     {
       id: 'sem-1',
-      name: 'Semester 1',
+      title: 'Semester 1',
       subjects: [
         {
           id: 'sub-1-1',
@@ -155,7 +151,7 @@ export const SAMPLE_BUILDER_COURSE: BuilderCourse = {
     },
     {
       id: 'sem-2',
-      name: 'Semester 2',
+      title: 'Semester 2',
       subjects: [
         {
           id: 'sub-2-1',

@@ -97,16 +97,12 @@ export function StudentBrowseScreen({ onCourse }: Props) {
                   )}
                   <View style={styles.cardBody}>
                     <Text numberOfLines={2} style={styles.cardTitle}>{c.title}</Text>
-                    <Text numberOfLines={2} style={styles.cardDesc}>{c.description}</Text>
+                    {c.description ? (
+                      <Text numberOfLines={2} style={styles.cardDesc}>{c.description}</Text>
+                    ) : null}
                     <View style={styles.cardMeta}>
                       <Layers size={11} color={colors.bodyGreen} />
                       <Text style={styles.metaText}>{c.semesterCount} semester{c.semesterCount === 1 ? '' : 's'}</Text>
-                      {c.createdByName ? (
-                        <>
-                          <View style={styles.dot} />
-                          <Text style={styles.metaText} numberOfLines={1}>{c.createdByName}</Text>
-                        </>
-                      ) : null}
                     </View>
                   </View>
                 </Pressable>

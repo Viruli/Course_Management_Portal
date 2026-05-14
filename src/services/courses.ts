@@ -1,56 +1,52 @@
 import { apiFetch, ApiResult } from './api';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Types (API v1.2.0) ──────────────────────────────────────────────────────
 
-export interface ApiAttachmentItem {
-  id:         string;
-  fileName:   string;
-  mimeType:   string;
-  sizeBytes:  number;
-  uploadedAt: string;
-}
+export type CourseState = 'draft' | 'published' | 'archived';
 
-export interface ApiSubjectDetail {
+// The v1.2.0 spec doc only lists `title`, but the deployed backend also requires
+// `description` on create and returns it on read. `coverImageUrl` and
+// `createdByName` are tolerated but optional — backend may omit them.
+export interface ApiCourse {
   id:             string;
-  semesterId:     string;
   title:          string;
   description:    string;
-  youtubeVideoId: string;
-  sortOrder:      number;
-  attachments:    ApiAttachmentItem[];
+  state:          CourseState;
+  semesterCount:  number;
+  createdBy:      string;
+  publishedAt:    string | null;
+  deletedAt:      string | null;
   createdAt:      string;
   updatedAt:      string;
+  // Optional extras that the backend may or may not return:
+  coverImageUrl?: string | null;
+  createdByName?: string;
 }
 
-export interface ApiSemesterDetail {
+// Embedded subject inside GET /courses/:id (v1.2.0 §4.2 / §17 CourseDetail):
+// only id/title/order/createdAt/updatedAt. No semesterId, no description.
+export interface ApiSubjectInTree {
+  id:        string;
+  title:     string;
+  order:     number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Embedded semester inside GET /courses/:id: id/title/subjectCount/order/+timestamps,
+// plus the nested subjects array.
+export interface ApiSemesterInTree {
   id:           string;
-  courseId:     string;
-  name:         string;
-  sortOrder:    number;
+  title:        string;
   subjectCount: number;
-  subjects:     ApiSubjectDetail[];
+  order:        number;
+  subjects:     ApiSubjectInTree[];
   createdAt:    string;
   updatedAt:    string;
 }
 
-export type CourseState = 'draft' | 'published' | 'archived';
-
-export interface ApiCourse {
-  id:            string;
-  title:         string;
-  description:   string;
-  coverImageUrl: string | null;
-  state:         CourseState;
-  semesterCount: number;
-  createdBy:     string;
-  createdByName: string;
-  publishedAt:   string | null;
-  createdAt:     string;
-  updatedAt:     string;
-}
-
 export interface ApiCourseDetail extends ApiCourse {
-  semesters: ApiSemesterDetail[];
+  semesters: ApiSemesterInTree[];
 }
 
 interface PaginatedCourses {
@@ -86,9 +82,11 @@ export function getCourseById(id: string): Promise<ApiResult<ApiCourseDetail>> {
   });
 }
 
+// v1.2.0 spec lists only `title`, but the deployed backend requires `description`
+// too (the spec is out of date). `coverImageUrl` is optional.
 export function createCourse(payload: {
-  title:          string;
-  description:    string;
+  title:         string;
+  description:   string;
   coverImageUrl?: string;
 }): Promise<ApiResult<ApiCourseDetail>> {
   return apiFetch<ApiCourseDetail>('/courses', {
@@ -101,30 +99,30 @@ export function createCourse(payload: {
 export function updateCourse(
   id: string,
   patch: { title?: string; description?: string; coverImageUrl?: string },
-): Promise<ApiResult<ApiCourseDetail>> {
-  return apiFetch<ApiCourseDetail>(`/courses/${id}`, {
+): Promise<ApiResult<ApiCourse>> {
+  return apiFetch<ApiCourse>(`/courses/${id}`, {
     method: 'PATCH',
     body:   patch,
     tag:    'courses.update',
   });
 }
 
-export function publishCourse(id: string): Promise<ApiResult<ApiCourseDetail>> {
-  return apiFetch<ApiCourseDetail>(`/courses/${id}/publish`, {
+export function publishCourse(id: string): Promise<ApiResult<ApiCourse>> {
+  return apiFetch<ApiCourse>(`/courses/${id}/publish`, {
     method: 'POST',
     tag:    'courses.publish',
   });
 }
 
-export function unpublishCourse(id: string): Promise<ApiResult<ApiCourseDetail>> {
-  return apiFetch<ApiCourseDetail>(`/courses/${id}/unpublish`, {
+export function unpublishCourse(id: string): Promise<ApiResult<ApiCourse>> {
+  return apiFetch<ApiCourse>(`/courses/${id}/unpublish`, {
     method: 'POST',
     tag:    'courses.unpublish',
   });
 }
 
-export function archiveCourse(id: string): Promise<ApiResult<ApiCourseDetail>> {
-  return apiFetch<ApiCourseDetail>(`/courses/${id}/archive`, {
+export function archiveCourse(id: string): Promise<ApiResult<ApiCourse>> {
+  return apiFetch<ApiCourse>(`/courses/${id}/archive`, {
     method: 'POST',
     tag:    'courses.archive',
   });

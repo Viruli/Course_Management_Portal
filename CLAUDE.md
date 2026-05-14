@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-`slp-mobile` — the Expo / React Native mobile frontend for a Course Management Portal (CMP). The app is a **partially-integrated design build**: the UI and navigation are complete with mock data; backend integration is in progress one feature at a time. The API contract lives in `.claude/Blueprint/blueprint_mobile.md` (architecture) and in the conversation history (API Reference v1.1.0). The app must remain Expo Go-compatible until Firebase / native packages are required.
+`slp-mobile` — the Expo / React Native mobile frontend for a Course Management Portal (CMP). The app is a **partially-integrated design build**: UI and navigation are complete with mock data; backend integration is in progress one feature at a time. The API contract lives in `.claude/Blueprint/blueprint_mobile.md` (architecture) and API Reference v1.1.0 in conversation history. The app must remain Expo Go-compatible until Firebase / native packages are required.
 
 Reference design lives in `src/CMP/` — the original web prototype (plain HTML + React via CDN). Not bundled; treat as a styling reference only.
 
@@ -14,7 +14,17 @@ Copy `.env.example` to `.env` and fill in your local values before starting. Met
 
 ```bash
 cp .env.example .env
-# Edit .env — set EXPO_PUBLIC_API_BASE_URL to http://<your-machine-ip>:3000/api/v1
+```
+
+Required env vars:
+```
+EXPO_PUBLIC_API_BASE_URL=http://<your-machine-ip>:3000/api/v1
+EXPO_PUBLIC_FIREBASE_API_KEY=...
+EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=...
+EXPO_PUBLIC_FIREBASE_PROJECT_ID=...
+EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=...
+EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=...
+EXPO_PUBLIC_FIREBASE_APP_ID=...
 ```
 
 ## Common commands
@@ -50,9 +60,9 @@ npx expo install --fix
 - `'admin'` → `AdminTabs`
 - `'super'` → `SuperAdminTabs`
 
-**Naming discrepancy to be aware of:** the API returns `role: 'super_admin'` but the app uses `'super'`. This mapping needs to happen when wiring `GET /me`.
+**Role naming:** the API returns `role: 'super_admin'`; the app uses `'super'`. `toAppRole()` in `src/services/auth.ts` handles the mapping at sign-in time.
 
-Sign-in is still partially mocked: `AuthFlow` calls `registerStudent()` (real API) for registration, but sign-in still resolves role from `SAMPLE_USERS` in `data/mock.ts`. Demo accounts:
+Sign-in is now fully wired via Firebase: `loginUser(email, password)` in `src/services/auth.ts` calls Firebase `signInWithEmailAndPassword`, then `GET /me` to fetch the API profile. On backend 5xx, it falls back to reading the role from the Firebase JWT custom claims so admin sign-in survives a crashed backend. Demo accounts (still usable against mock data):
 
 | Role | Email |
 |---|---|
@@ -60,12 +70,39 @@ Sign-in is still partially mocked: `AuthFlow` calls `registerStudent()` (real AP
 | Admin | `sahan.w@edupath.lk` |
 | Super Admin | `dilani.r@edupath.lk` |
 
+### Authentication flow
+
+Firebase JS SDK (`firebase@^12`) — no native modules, keeping Expo Go compatibility.
+
+1. `loginUser(email, password)` → Firebase `signInWithEmailAndPassword` → get ID token
+2. `GET /me` with token → `ApiUserProfile`; on 5xx falls back to JWT custom claims
+3. Status checks: reject `pending_approval`, `rejected`, `suspended` before setting role
+4. `toAppRole()` maps `super_admin` → `'super'`; sets `appStore.role`
+
+Token handling: `getAuthToken()` calls `auth.currentUser?.getIdToken()` on every request — no local token storage. A `401` response with `TOKEN_REVOKED` or `INVALID_TOKEN` triggers `handleRevoked()` → force sign-out and reset to `'public'`.
+
+Sign-out: `performLogout()` → POST `/auth/logout` + Firebase `signOut()` + clear `profileStore` + reset role. Offline fallback toasts `'Signed out locally. Session will expire within 1 hour.'`
+
 ### API service layer
 
 All backend calls go through `src/services/`:
 
-- `api.ts` — `apiFetch<T>(path, options)` base client. Reads `EXPO_PUBLIC_API_BASE_URL`, attaches auth headers, handles timeouts, and normalises every error into a typed `ApiError`. Returns `ApiResult<T>` `{ data, status, requestId, url, durationMs }`.
-- `auth.ts` — `registerStudent(payload)` — the only wired endpoint so far.
+- `api.ts` — `apiFetch<T>(path, options)` base client. Reads `EXPO_PUBLIC_API_BASE_URL`, auto-attaches Firebase ID token, enforces 15 s timeout, normalises every error into a typed `ApiError`. Returns `ApiResult<T>` `{ data, status, requestId, url, durationMs }`.
+
+Currently wired service files:
+
+| File | Covers |
+|---|---|
+| `auth.ts` | register, login, logout, token-refresh, login-failure tracking |
+| `courses.ts` | student catalog + admin CRUD (list, fetch, publish, archive, update, delete) |
+| `semesters.ts` | create / update semesters |
+| `subjects.ts` | create / update subjects |
+| `enrollments.ts` | admin enrollment queue (list, approve, reject) |
+| `registrations.ts` | admin registration queue (list, approve, reject) |
+| `attachments.ts` | file upload / download |
+| `storage.ts` | persistent local caching |
+| `getAuthToken.ts` | convenience wrapper for Firebase ID token |
+| `firebase.ts` | Firebase app initialisation (Auth, Storage) |
 
 **Adding a new service call:**
 ```ts
@@ -75,11 +112,13 @@ export function getMyProfile(token: string) {
   return apiFetch<UserProfile>('/me', {
     method: 'GET',
     token,
-    tag: 'profile.getMe',          // appears in DebugPanel
+    tag: 'profile.getMe',    // appears in DebugPanel
     redactFields: [],
   });
 }
 ```
+
+**Pagination pattern** (registrations, enrollments): responses include `{ data[], nextCursor, total }`. Build query strings with `URLSearchParams`.
 
 **Error handling pattern in screens:**
 ```ts
@@ -98,33 +137,33 @@ try {
 }
 ```
 
-`ApiError` carries `.code` (machine-readable, matches the API error codes reference), `.status` (HTTP), `.details` (field-level validation errors from 400 responses), and `.requestId`.
+`ApiError` carries `.code` (machine-readable), `.status` (HTTP), `.details` (field-level validation from 400 responses), and `.requestId`.
 
 ### Debug infrastructure
 
-`src/store/debugStore.ts` — in-memory log (max 50 entries) of every `apiFetch` call. Auto-populated when a `tag` is passed to `apiFetch`. Use the `debug` helper for non-hook contexts.
+`src/store/debugStore.ts` — in-memory log (max 50 entries) of every `apiFetch` call. Auto-populated when a `tag` is passed. Use the `debug` helper for non-hook contexts.
 
 `src/components/DebugPanel.tsx` — drop into any screen during development:
 ```tsx
 <DebugPanel tags={['auth.register']} title="Sign up debug" />
 ```
-Renders expandable request/response cards including body, status, duration, and error. Hidden automatically when `debugStore.enabled` is false or the tag has no entries.
+Hidden automatically when `debugStore.enabled` is false or the tag has no entries.
 
 ### State (Zustand stores)
 
-All in `src/store/`. No persistence layer yet.
+All in `src/store/`. No persistence layer yet — all stores are in-memory only.
 
-- `appStore` — current role
-- `profileStore` — per-role profile (firstName/lastName/email/photoUri)
-- `usersStore` — full user roster seeded from `SAMPLE_USERS`; mutated by approve/suspend actions
+- `appStore` — current role + `publicStep` (which auth screen to show)
+- `profileStore` — dual-layer: real `apiProfile` (populated at sign-in) **and** mock `profiles` per role. Screens not yet wired to `apiProfile` still render mock data.
+- `usersStore` — full user roster seeded from `SAMPLE_USERS`; mutated by approve/suspend
 - `approvalsStore` — registration + enrolment queues; approve/reject mutates here
 - `notificationsStore` — keyed by audience (`'student'` / `'admin'`), with read-state
 - `courseBuilderStore` — in-progress course; shared between `CourseBuilderScreen` and `LessonEditorScreen`
-- `themeStore` — user theme preference (`light | dark | system`) + resolved OS scheme
-- `uiStore` — toast queue. Use `toast.success(msg) / toast.info(msg) / toast.error(msg)` from anywhere
-- `debugStore` — API call log; not user-facing, dev tooling only
+- `themeStore` — user preference (`light | dark | system`) + resolved OS scheme
+- `uiStore` — toast queue. Use `toast.success(msg) / toast.info(msg) / toast.error(msg)` from anywhere (non-hook-safe)
+- `debugStore` — API call log; dev tooling only
 
-`ToastHost` is mounted once at the root in `App.tsx`.
+`ToastHost` is mounted once at the root in `App.tsx`. Toasts auto-dismiss after ~2.6 s.
 
 ### Theming
 
@@ -133,7 +172,7 @@ All in `src/store/`. No persistence layer yet.
 - `colors.brand` (#152A24) — **constant** in both modes. Use for brand backgrounds, primary buttons, active nav pills.
 - `colors.primary` — **adaptive**. Light mode = brand; dark mode = #EEF2EE. Use for text and icons so contrast flips with the surface.
 - `surface`, `pageBg`, `surface2`, `lightGray`, `stroke`, `stroke2`, `bodyGreen`, `muted`, `*Bg` tokens — all adaptive.
-- `accent` (lime), semantic colours (success/warning/error), `white` — constant.
+- `accent` (lime #BCE955), semantic colours (success/warning/error), `white` — constant.
 
 **`useThemedStyles` pattern — required for all components:**
 ```tsx
@@ -152,11 +191,15 @@ const createStyles = (colors: Colors) => StyleSheet.create({
 ```
 Never import colours at module scope — `StyleSheet.create` runs once at load and won't react to theme changes.
 
+### Path alias
+
+`tsconfig.json` maps `@/*` → `./src/*`. Use `@/services/api` instead of relative paths when importing across feature boundaries.
+
 ### Course Builder hierarchy
 
 The most complex sub-feature. Frontend hierarchy: **Course → Semester → Subject → Lesson → Attachments**. `courseBuilderStore` holds the in-progress course; `CourseBuilderScreen` renders nested accordions; tapping a lesson navigates to `LessonEditorScreen`. `SAMPLE_BUILDER_COURSE` in `data/mock.ts` is loaded when "Edit" is tapped on any published course.
 
-**API hierarchy (v1.1.0):** Course → Semester → Subject (with `youtubeVideoId`) → Lesson (separate entity, §6.4–6.7) → Attachments. The frontend's extra Lesson layer is pending reconciliation with the backend team.
+**API hierarchy (v1.1.0):** Course → Semester → Subject (with `youtubeVideoId`) → Attachments. The frontend's extra **Lesson** layer is pending reconciliation with the backend team.
 
 ### Expo Go constraints
 
@@ -167,6 +210,10 @@ Targets **Expo Go SDK 54**. Do not add packages that require a custom dev client
 - `lucide-react-native@1.x` — `Youtube` icon removed; use `TvMinimalPlay` instead
 - React Navigation v7 theme requires a `fonts` block alongside `colors` — see `RootNavigator.tsx`
 - Reanimated 4 babel plugin is `react-native-worklets/plugin` — already in `babel.config.js`
+
+### Fonts
+
+Figtree (headings) and Inter (body) are specified in the design but **not yet linked**. The app currently falls back to system fonts (San Francisco on iOS, Roboto on Android). Setup steps are in `FONTS_SETUP.md` — requires `.ttf` files in `assets/fonts/`, a `react-native.config.js`, and `npx react-native-asset`. Do not attempt font linking while Expo Go is the target; it requires a custom dev client.
 
 ## .claude/ workflow
 
@@ -179,7 +226,7 @@ Four slash commands automate the feature-integration workflow. Run them in order
 | `/create-sprints <slug>` | Explodes the plan into per-phase sprint files under `.claude/_sprints/<slug>/` |
 | `/run-sprint [<arg>]` | Walks through a sprint task-by-task, runs `npx tsc --noEmit`, prompts manual Expo Go test, marks complete |
 
-Specs, plans, and sprints are committed on the feature branch. They serve as living documentation for the integration work.
+Specs, plans, and sprints are committed on the feature branch and serve as living documentation.
 
 ## Working notes
 
@@ -188,3 +235,4 @@ Specs, plans, and sprints are committed on the feature branch. They serve as liv
 - Pending registration and enrolment counts on tab badges, dashboard cards, and queue tabs are all derived from `approvalsStore` — they update instantly. Never hard-code counts.
 - `EditProfileScreen` is shared between student and admin flows — lives in `src/screens/shared/`.
 - The OS theme listener is mounted in `App.tsx` and syncs the device colour scheme into `themeStore.systemScheme`.
+- `profileStore.apiProfile` holds the real signed-in user; `profileStore.profiles` holds per-role mock data. Most screens still render mock data — wiring them to `apiProfile` is pending.

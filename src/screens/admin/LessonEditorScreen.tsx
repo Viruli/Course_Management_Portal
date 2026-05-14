@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
@@ -15,8 +15,10 @@ import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
 import { useCourseBuilderStore } from '../../store/courseBuilderStore';
 import { toast } from '../../store/uiStore';
 import {
+  createLesson,
   updateLesson as apiUpdateLesson,
   deleteLesson as apiDeleteLesson,
+  youtubeIdFromInput,
 } from '../../services/subjects';
 import {
   uploadAttachment, deleteAttachment as apiDeleteAttachment,
@@ -24,29 +26,19 @@ import {
 } from '../../services/attachments';
 import * as DocumentPicker from 'expo-document-picker';
 import { ApiError } from '../../services/api';
+import { DebugPanel } from '../../components/DebugPanel';
 import type { BuilderAttachment } from '../../data/types';
 
 type Props = {
-  route: { params: { semesterId: string; subjectId: string; lessonId: string; apiLessonId?: string; apiSubjectId?: string } };
+  route: {
+    params: {
+      semesterId: string;
+      subjectId: string;
+      lessonId?: string;       // omitted → create mode
+    };
+  };
   navigation: any;
 };
-
-// Extract YouTube video ID from a few common URL formats so we can render
-// a preview thumbnail without embedding an actual webview player.
-function youtubeIdFromUrl(url: string): string | null {
-  if (!url) return null;
-  const patterns = [
-    /youtu\.be\/([A-Za-z0-9_-]{11})/,
-    /youtube\.com\/watch\?v=([A-Za-z0-9_-]{11})/,
-    /youtube\.com\/embed\/([A-Za-z0-9_-]{11})/,
-    /youtube\.com\/shorts\/([A-Za-z0-9_-]{11})/,
-  ];
-  for (const p of patterns) {
-    const m = url.match(p);
-    if (m) return m[1];
-  }
-  return null;
-}
 
 const attachmentIcon = (kind: BuilderAttachment['kind']) => {
   if (kind === 'pdf')   return FileText;
@@ -56,40 +48,124 @@ const attachmentIcon = (kind: BuilderAttachment['kind']) => {
   return FileIco;
 };
 
+function useDebouncedPatch(lessonId: string | undefined) {
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pending = useRef<Parameters<typeof apiUpdateLesson>[1]>({});
+
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+
+  return (patch: Parameters<typeof apiUpdateLesson>[1]) => {
+    if (!lessonId) return;
+    pending.current = { ...pending.current, ...patch };
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      const body = pending.current;
+      pending.current = {};
+      apiUpdateLesson(lessonId, body).catch(() => {/* surface via debug panel */});
+    }, 600);
+  };
+}
+
 export function LessonEditorScreen({ route, navigation }: Props) {
   const colors = useColors();
   const styles = useThemedStyles(createStyles);
   const { semesterId, subjectId, lessonId } = route.params;
 
   const lesson = useCourseBuilderStore((s) =>
-    s.course.semesters
-      .find((x) => x.id === semesterId)?.subjects
-      .find((x) => x.id === subjectId)?.lessons
-      .find((x) => x.id === lessonId) ?? null
+    !lessonId ? null :
+      s.course.semesters
+        .find((x) => x.id === semesterId)?.subjects
+        .find((x) => x.id === subjectId)?.lessons
+        .find((x) => x.id === lessonId) ?? null
   );
-  const updateLesson    = useCourseBuilderStore((s) => s.updateLesson);
-  const removeLesson    = useCourseBuilderStore((s) => s.removeLesson);
-  const addAttachment   = useCourseBuilderStore((s) => s.addAttachment);
-  const removeAttachment = useCourseBuilderStore((s) => s.removeAttachment);
+  const addLesson         = useCourseBuilderStore((s) => s.addLesson);
+  const updateLessonLocal = useCourseBuilderStore((s) => s.updateLesson);
+  const removeLesson      = useCourseBuilderStore((s) => s.removeLesson);
+  const addAttachment     = useCourseBuilderStore((s) => s.addAttachment);
+  const removeAttachment  = useCourseBuilderStore((s) => s.removeAttachment);
 
+  const isCreateMode = !lesson;
+
+  // ── Create-mode local state ───────────────────────────────────────────────
+  const [draft, setDraft] = useState({ title: '', description: '', url: '' });
+  const [saving, setSaving] = useState(false);
+  const [createError, setCreateError] = useState('');
+
+  // ── Edit-mode infrastructure ──────────────────────────────────────────────
   const [uploading, setUploading] = useState(false);
+  const patch = useDebouncedPatch(lessonId);
 
-  const ytId = useMemo(() => youtubeIdFromUrl(lesson?.url ?? ''), [lesson?.url]);
+  // The form binds to either the draft (create) or the lesson (edit).
+  const formTitle = isCreateMode ? draft.title       : (lesson!.title ?? '');
+  const formDesc  = isCreateMode ? draft.description : (lesson!.description ?? '');
+  const formUrl   = isCreateMode ? draft.url         : (lesson!.url ?? '');
 
-  const handleDeleteLesson = async () => {
-    if (lessonId) {
-      apiDeleteLesson(lessonId).catch(() => {});
+  const ytId = useMemo(() => youtubeIdFromInput(formUrl), [formUrl]);
+
+  const onChangeTitle = (v: string) => {
+    if (isCreateMode) {
+      setDraft((d) => ({ ...d, title: v }));
+      setCreateError('');
+    } else {
+      updateLessonLocal(semesterId, subjectId, lessonId!, { title: v });
+      patch({ title: v });
     }
-    removeLesson(semesterId, subjectId, lessonId);
+  };
+  const onChangeDescription = (v: string) => {
+    if (isCreateMode) {
+      setDraft((d) => ({ ...d, description: v }));
+      setCreateError('');
+    } else {
+      updateLessonLocal(semesterId, subjectId, lessonId!, { description: v });
+      patch({ description: v });
+    }
+  };
+  const onChangeUrl = (v: string) => {
+    if (isCreateMode) {
+      setDraft((d) => ({ ...d, url: v }));
+      setCreateError('');
+    } else {
+      updateLessonLocal(semesterId, subjectId, lessonId!, { url: v });
+      patch({ url: v });
+    }
+  };
+
+  const handleCreateLesson = async () => {
+    if (!draft.title.trim()) { setCreateError('Title is required.'); return; }
+    if (!draft.url.trim())   { setCreateError('Video URL is required.'); return; }
+    setSaving(true); setCreateError('');
+    try {
+      const title       = draft.title.trim();
+      const url         = draft.url.trim();
+      const description = draft.description.trim();
+
+      const r = await createLesson(subjectId, { title, url, description });
+
+      // addLesson creates a blank entry; immediately populate it with the
+      // actual values so the lesson row in the builder shows the correct title.
+      addLesson(semesterId, subjectId, r.data.id);
+      updateLessonLocal(semesterId, subjectId, r.data.id, { title, url, description });
+
+      toast.success(`Lesson "${title}" created.`);
+      navigation.goBack();   // return to builder — tap the lesson row to edit further
+    } catch (err) {
+      if (err instanceof ApiError) setCreateError(`[${err.code}] ${err.message}`);
+      else setCreateError('Failed to create lesson. Try again.');
+    } finally { setSaving(false); }
+  };
+
+  const handleDeleteLesson = () => {
+    if (isCreateMode) { navigation.goBack(); return; }
+    apiDeleteLesson(lessonId!).catch(() => {});
+    removeLesson(semesterId, subjectId, lessonId!);
     navigation.goBack();
   };
 
-  const handleUpdateUrl = (v: string) => {
-    updateLesson(semesterId, subjectId, lessonId, { url: v });
-    if (lessonId) apiUpdateLesson(lessonId, { url: v }).catch(() => {});
-  };
-
   const handlePickAttachment = async () => {
+    if (isCreateMode) {
+      toast.info('Save the lesson first to add attachments.');
+      return;
+    }
     const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true });
     if (result.canceled || !result.assets?.length) return;
     const asset = result.assets[0];
@@ -104,13 +180,12 @@ export function LessonEditorScreen({ route, navigation }: Props) {
     }
     setUploading(true);
     try {
-      const subjectId = route.params.apiSubjectId ?? route.params.subjectId;
       const uploaded = await uploadAttachment(subjectId, {
         uri: asset.uri, name: asset.name, type: mimeType,
       });
-      addAttachment(semesterId, route.params.subjectId, lessonId, {
+      addAttachment(semesterId, subjectId, lessonId!, {
         id:   uploaded.data.id,
-        name: uploaded.data.fileName,
+        name: uploaded.data.filename,
         kind: mimeType.includes('pdf') ? 'pdf' : 'doc',
         size: `${Math.round((asset.size ?? 0) / 1024)} KB`,
       });
@@ -127,28 +202,17 @@ export function LessonEditorScreen({ route, navigation }: Props) {
   };
 
   const handleDeleteAttachment = (attachmentId: string) => {
+    if (isCreateMode) return;
     apiDeleteAttachment(attachmentId).catch(() => {});
-    removeAttachment(semesterId, subjectId, lessonId, attachmentId);
+    removeAttachment(semesterId, subjectId, lessonId!, attachmentId);
   };
 
-  if (!lesson) {
-    return (
-      <ScreenContainer edges={['top']}>
-        <AppBar
-          title="Lesson"
-          leading={<IconBtn onPress={() => navigation.goBack()}><ArrowLeft size={20} color={colors.primary} /></IconBtn>}
-        />
-        <View style={{ padding: 24 }}>
-          <Text style={{ color: colors.bodyGreen }}>Lesson not found.</Text>
-        </View>
-      </ScreenContainer>
-    );
-  }
+  const attachments = lesson?.attachments ?? [];
 
   return (
     <ScreenContainer edges={['top']} bg={colors.surface2}>
       <AppBar
-        title={lesson.title || 'New lesson'}
+        title={isCreateMode ? 'New lesson' : (lesson!.title || 'Lesson')}
         leading={<IconBtn onPress={() => navigation.goBack()}><ArrowLeft size={20} color={colors.primary} /></IconBtn>}
         trailing={
           <Pressable
@@ -165,42 +229,44 @@ export function LessonEditorScreen({ route, navigation }: Props) {
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Lesson details</Text>
           <View style={{ gap: 12 }}>
-            <Field label="Title">
+            <Field label="Title *">
               <TextInput
-                value={lesson.title}
-                onChangeText={(v) => updateLesson(semesterId, subjectId, lessonId, { title: v })}
+                value={formTitle}
+                onChangeText={onChangeTitle}
                 placeholder="e.g. Slope-intercept form"
                 placeholderTextColor={colors.muted}
                 style={styles.input}
+                maxLength={200}
               />
             </Field>
 
             <Field label="Description">
               <TextInput
-                value={lesson.description}
-                onChangeText={(v) => updateLesson(semesterId, subjectId, lessonId, { description: v })}
+                value={formDesc}
+                onChangeText={onChangeDescription}
                 placeholder="What is this lesson about?"
                 placeholderTextColor={colors.muted}
                 multiline
                 style={[styles.input, styles.textarea]}
                 textAlignVertical="top"
+                maxLength={2000}
               />
             </Field>
           </View>
         </View>
 
-        {/* YouTube */}
+        {/* Video */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Video</Text>
-          <Field label="Video URL (YouTube, Vimeo, or any video link)">
+          <Field label="Video URL * (YouTube, Vimeo, etc.)">
             <View style={styles.ytRow}>
               <View style={styles.ytIco}>
                 <TvMinimalPlay size={18} color={colors.error} />
               </View>
               <TextInput
-                value={lesson.url}
-                onChangeText={handleUpdateUrl}
-                placeholder="https://www.youtube.com/watch?v=… or any video URL"
+                value={formUrl}
+                onChangeText={onChangeUrl}
+                placeholder="https://www.youtube.com/watch?v=…"
                 placeholderTextColor={colors.muted}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -210,18 +276,18 @@ export function LessonEditorScreen({ route, navigation }: Props) {
             </View>
           </Field>
 
-          {lesson.url ? (
+          {formUrl ? (
             ytId ? (
               <View style={styles.ytPreview}>
                 <View style={styles.ytPreviewFrame}>
                   <View style={styles.ytPreviewPlay}>
                     <TvMinimalPlay size={28} color={colors.white} fill={colors.error} />
                   </View>
-                  <Text style={styles.ytPreviewLabel}>Embedded preview</Text>
+                  <Text style={styles.ytPreviewLabel}>YouTube preview</Text>
                   <Text style={styles.ytPreviewId}>Video ID: {ytId}</Text>
                 </View>
                 <Text style={styles.ytHelp}>
-                  Students will see the embedded player here when they open this lesson.
+                  Stored as the full URL. Students will see the embedded player.
                 </Text>
               </View>
             ) : (
@@ -237,11 +303,11 @@ export function LessonEditorScreen({ route, navigation }: Props) {
           <View style={styles.sectionHead}>
             <Text style={styles.sectionLabel}>Attachments</Text>
             <Text style={styles.muted}>
-              {lesson.attachments.length} file{lesson.attachments.length === 1 ? '' : 's'}
+              {attachments.length} file{attachments.length === 1 ? '' : 's'}
             </Text>
           </View>
 
-          {lesson.attachments.map((a) => {
+          {attachments.map((a) => {
             const Icon = attachmentIcon(a.kind);
             return (
               <View key={a.id} style={styles.attachment}>
@@ -263,30 +329,43 @@ export function LessonEditorScreen({ route, navigation }: Props) {
           })}
 
           <Pressable
-            style={[styles.addAttachment, uploading && { opacity: 0.5 }]}
+            style={[styles.addAttachment, (uploading || isCreateMode) && { opacity: 0.5 }]}
             onPress={uploading ? undefined : handlePickAttachment}
+            disabled={uploading}
           >
             {uploading
               ? <ActivityIndicator size="small" color={colors.primary} />
               : <Paperclip size={14} color={colors.primary} />}
-            <Text style={styles.addAttachmentText}>{uploading ? 'Uploading…' : 'Add attachment'}</Text>
-            {!uploading && <Plus size={14} color={colors.primary} />}
+            <Text style={styles.addAttachmentText}>
+              {uploading ? 'Uploading…' : isCreateMode ? 'Save lesson to add attachments' : 'Add attachment'}
+            </Text>
+            {!uploading && !isCreateMode && <Plus size={14} color={colors.primary} />}
           </Pressable>
 
           <Text style={styles.muted}>
-            Worksheets, slides, quizzes — anything students need to download.
+            PDF, DOC, or DOCX. Max 25 MB per file.
           </Text>
         </View>
+
+        {createError ? (
+          <Text style={styles.errorText}>{createError}</Text>
+        ) : null}
+
+        <DebugPanel
+          tags={['lessons.create', 'lessons.update', 'lessons.delete', 'attachments.delete']}
+          title="Lesson debug"
+        />
       </ScrollView>
 
       <View style={styles.stickyBar}>
         <Button
           full
           size="lg"
+          disabled={saving}
           leftIcon={<Check size={16} color={colors.white} />}
-          onPress={() => navigation.goBack()}
+          onPress={isCreateMode ? handleCreateLesson : () => navigation.goBack()}
         >
-          Done
+          {isCreateMode ? (saving ? 'Saving…' : 'Save lesson') : 'Done'}
         </Button>
       </View>
     </ScreenContainer>
@@ -314,6 +393,7 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   muted: { fontSize: 11, color: colors.muted },
   fieldLabel: { fontSize: 12, fontWeight: '700', color: colors.primary },
+  errorText: { fontSize: 12, color: colors.error, fontWeight: '600', paddingHorizontal: 4 },
 
   input: {
     backgroundColor: colors.lightGray,
@@ -345,12 +425,6 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   ytPreviewLabel: { color: colors.accent, fontSize: 11, fontWeight: '700', letterSpacing: 0.6 },
   ytPreviewId: { color: 'rgba(255,255,255,0.6)', fontSize: 11, fontFamily: 'monospace' as any },
   ytHelp: { fontSize: 11, color: colors.bodyGreen },
-
-  ytInvalid: {
-    padding: 10, borderRadius: 10,
-    backgroundColor: colors.warningBg,
-  },
-  ytInvalidText: { fontSize: 12, color: colors.warning, lineHeight: 16 },
 
   attachment: {
     flexDirection: 'row', alignItems: 'center', gap: 10,

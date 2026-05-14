@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Modal, Pressable, ScrollView,
+  ActivityIndicator, Modal, Pressable, ScrollView,
   StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import {
@@ -14,12 +14,13 @@ import { Tabs } from '../../components/Tabs';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
+import { DebugPanel } from '../../components/DebugPanel';
+import { CoverImagePicker } from '../../components/CoverImagePicker';
 import {
-  ApiCourse, CourseState,
+  ApiCourse,
   listCourses, createCourse, publishCourse, unpublishCourse,
   archiveCourse, deleteCourse,
 } from '../../services/courses';
-import { CoverImagePicker } from '../../components/CoverImagePicker';
 import { ApiError } from '../../services/api';
 import { toast } from '../../store/uiStore';
 import type { Colors } from '../../theme/colors';
@@ -46,12 +47,13 @@ export function CoursesScreen({ onCourse, onEditCourse, onCourseCreated }: Props
   const [actionId, setActionId] = useState<string | null>(null);  // per-card action in-flight
 
   // ── Create course modal state ─────────────────────────────────────────────
-  const [createOpen,    setCreateOpen]    = useState(false);
-  const [createTitle,   setCreateTitle]   = useState('');
-  const [createDesc,    setCreateDesc]    = useState('');
-  const [createCover,   setCreateCover]   = useState('');
-  const [createError,   setCreateError]   = useState('');
-  const [creating,      setCreating]      = useState(false);
+  // Backend requires title + description; cover image is optional.
+  const [createOpen,  setCreateOpen]  = useState(false);
+  const [createTitle, setCreateTitle] = useState('');
+  const [createDesc,  setCreateDesc]  = useState('');
+  const [createCover, setCreateCover] = useState('');
+  const [createError, setCreateError] = useState('');
+  const [creating,    setCreating]    = useState(false);
 
   const fetchCourses = useCallback(async (state: TabState) => {
     setLoading(true);
@@ -83,11 +85,25 @@ export function CoursesScreen({ onCourse, onEditCourse, onCourseCreated }: Props
       const savedTitle = createTitle.trim();
       const savedDesc  = createDesc.trim();
       const savedCover = createCover.trim();
-      setCreateOpen(false); setCreateTitle(''); setCreateDesc(''); setCreateCover('');
+      setCreateOpen(false);
+      setCreateTitle(''); setCreateDesc(''); setCreateCover('');
       onCourseCreated(result.data.id, savedTitle, savedDesc, savedCover);
     } catch (err) {
-      if (err instanceof ApiError && err.code === 'COURSE_TITLE_EXISTS') {
-        setCreateError('A course with this title already exists.');
+      if (err instanceof ApiError) {
+        if (err.code === 'COURSE_TITLE_EXISTS') {
+          setCreateError('A course with this title already exists.');
+        } else if (err.code === 'VALIDATION_ERROR') {
+          // Surface field-level validation issues from the backend (v1.2.0 §1.5)
+          const fieldErrors = err.details
+            ? Object.entries(err.details)
+                .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
+                .join(' · ')
+            : '';
+          setCreateError(fieldErrors || err.message || 'Validation failed.');
+        } else {
+          // Show the actual code + message so the cause is visible.
+          setCreateError(`[${err.code}] ${err.message}`);
+        }
       } else {
         setCreateError('Something went wrong. Please try again.');
       }
@@ -195,11 +211,12 @@ export function CoursesScreen({ onCourse, onEditCourse, onCourseCreated }: Props
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.cardTitle} numberOfLines={2}>{c.title}</Text>
-                  <Text style={styles.cardDesc} numberOfLines={1}>{c.description}</Text>
+                  {c.description ? (
+                    <Text style={styles.cardDesc} numberOfLines={1}>{c.description}</Text>
+                  ) : null}
                   <View style={styles.cardMeta}>
                     <Layers size={11} color={colors.bodyGreen} />
                     <Text style={styles.metaText}>{c.semesterCount} semester{c.semesterCount === 1 ? '' : 's'}</Text>
-                    <Text style={styles.metaText}> · {c.createdByName}</Text>
                   </View>
                 </View>
                 <View style={styles.cardRight}>
@@ -306,6 +323,7 @@ export function CoursesScreen({ onCourse, onEditCourse, onCourseCreated }: Props
                 autoFocus
               />
             </View>
+
             <View style={{ gap: 4 }}>
               <Text style={styles.inputLabel}>Description *</Text>
               <TextInput
@@ -334,6 +352,8 @@ export function CoursesScreen({ onCourse, onEditCourse, onCourseCreated }: Props
             <Button full disabled={creating} onPress={handleCreate}>
               {creating ? 'Creating…' : 'Create course'}
             </Button>
+
+            <DebugPanel tags={['courses.create']} title="Create-course debug" />
           </Pressable>
         </Pressable>
       </Modal>

@@ -261,7 +261,7 @@ function CurriculumTree({ semesters, onPlayActive }: { semesters: BuilderSemeste
                 <GraduationCap size={16} color={colors.accent} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.curSemName}>{sem.name}</Text>
+                <Text style={styles.curSemName}>{sem.title}</Text>
                 <Text style={styles.curSemMeta}>
                   {subjectCount} subject{subjectCount === 1 ? '' : 's'} · {lessonCount} lesson{lessonCount === 1 ? '' : 's'}
                 </Text>

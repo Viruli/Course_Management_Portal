@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator, Modal, Pressable, ScrollView,
+  Modal, Pressable, ScrollView,
   StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import {
@@ -18,9 +18,12 @@ import {
   createSemester, updateSemester, deleteSemester,
 } from '../../services/semesters';
 import {
-  createSubject, updateSubject, deleteSubject, createLesson,
+  createSubject, updateSubject, deleteSubject,
+  listLessons,
+  youtubeIdFromInput,
 } from '../../services/subjects';
-import { updateCourse, publishCourse } from '../../services/courses';
+import { listSemesters } from '../../services/semesters';
+import { updateCourse, publishCourse, getCourseById } from '../../services/courses';
 import { ApiError } from '../../services/api';
 import { toast } from '../../store/uiStore';
 import { DebugPanel } from '../../components/DebugPanel';
@@ -31,19 +34,103 @@ interface Props {
   navigation: any;
 }
 
-export function CourseBuilderScreen({ navigation }: Props) {
+export function CourseBuilderScreen({ route, navigation }: Props) {
   const colors = useColors();
   const styles = useThemedStyles(createStyles);
   const course     = useCourseBuilderStore((s) => s.course);
   const courseId   = useCourseBuilderStore((s) => s.courseId);
   const isEditing  = useCourseBuilderStore((s) => s.isEditing);
+  const loadExisting   = useCourseBuilderStore((s) => s.loadExisting);
+  const loadFullCourse = useCourseBuilderStore((s) => s.loadFullCourse);
   const { setTitle, setDescription, setCoverImageUrl,
           addSemester, renameSemester, removeSemester,
-          addSubject, renameSubject, removeSubject, addLesson, removeLesson } = useCourseBuilderStore();
+          addSubject, renameSubject, removeSubject, removeLesson } = useCourseBuilderStore();
 
-  const [expanded,  setExpanded]  = useState<Record<string, boolean>>({});
-  const [actionId,  setActionId]  = useState<string | null>(null);  // in-flight ID
+  const [expanded,   setExpanded]   = useState<Record<string, boolean>>({});
+  const [actionId,   setActionId]   = useState<string | null>(null);  // in-flight ID
   const [publishing, setPublishing] = useState(false);
+  const [hydrating,  setHydrating]  = useState(false);
+
+  // Hydrate from API when navigated to with a courseId that's different from
+  // what the store currently holds (i.e. user tapped Edit on an existing course).
+  useEffect(() => {
+    const paramCourseId = route?.params?.courseId;
+    if (!paramCourseId) return;
+    if (paramCourseId === courseId) return;  // already loaded
+    let cancelled = false;
+    setHydrating(true);
+
+    const hydrate = async () => {
+      const res = await getCourseById(paramCourseId);
+      if (cancelled) return;
+
+      // Always hydrate course metadata first so the user can edit title/desc/cover
+      // even if the semester tree can't be fetched.
+      loadExisting(
+        paramCourseId,
+        res.data.title ?? '',
+        res.data.description ?? '',
+        (res.data.coverImageUrl as string) ?? '',
+      );
+
+      // Try to hydrate the semester/subject/lesson tree. Source order:
+      //   (a) embedded array in GET /courses/:id (per API spec)
+      //   (b) GET /courses/:id/semesters (defensive fallback)
+      // Handle v1.1 (name/sortOrder) and v1.2 (title/order) field names.
+      let apiSemesters: any[] = Array.isArray((res.data as any).semesters)
+        ? (res.data as any).semesters
+        : [];
+
+      if (apiSemesters.length === 0 && (res.data.semesterCount ?? 0) > 0) {
+        try {
+          const semRes = await listSemesters(paramCourseId);
+          apiSemesters = semRes.data ?? [];
+        } catch { /* leave empty — backend may not expose this endpoint */ }
+      }
+      if (cancelled || apiSemesters.length === 0) return;
+
+      const builderSemesters = await Promise.all(apiSemesters.map(async (apiSem: any) => {
+        const apiSubjects: any[] = Array.isArray(apiSem.subjects) ? apiSem.subjects : [];
+        const builderSubjects = await Promise.all(apiSubjects.map(async (apiSub: any) => {
+          let lessons: any[] = [];
+          try {
+            const lesRes = await listLessons(apiSub.id);
+            lessons = lesRes.data ?? [];
+          } catch { /* no lessons for this subject */ }
+          return {
+            id:    apiSub.id,
+            title: apiSub.title ?? apiSub.name ?? '',
+            lessons: lessons.map((l) => ({
+              id:          l.id,
+              title:       l.title ?? '',
+              description: l.description ?? '',
+              url:         l.url ?? '',
+              attachments: [],
+            })),
+          };
+        }));
+        return {
+          id:    apiSem.id,
+          title: apiSem.title ?? apiSem.name ?? '',
+          subjects: builderSubjects,
+        };
+      }));
+
+      if (cancelled) return;
+      loadFullCourse(paramCourseId, {
+        id:            paramCourseId,
+        title:         res.data.title ?? '',
+        description:   res.data.description ?? '',
+        coverImageUrl: (res.data.coverImageUrl as string) ?? '',
+        semesters:     builderSemesters,
+      });
+    };
+
+    hydrate()
+      .catch(() => { if (!cancelled) toast.error('Failed to load course for editing.'); })
+      .finally(() => { if (!cancelled) setHydrating(false); });
+    return () => { cancelled = true; };
+  }, [route?.params?.courseId, courseId, loadExisting, loadFullCourse]);
 
   // ── Add semester modal state ──────────────────────────────────────────────
   const [semModal,    setSemModal]    = useState(false);
@@ -52,12 +139,12 @@ export function CourseBuilderScreen({ navigation }: Props) {
   const [semSaving,   setSemSaving]   = useState(false);
 
   // ── Add subject modal state ───────────────────────────────────────────────
-  const [subModal,    setSubModal]    = useState<{ semesterId: string } | null>(null);
-  const [subTitle,    setSubTitle]    = useState('');
-  const [subDesc,     setSubDesc]     = useState('');
-  const [subYtUrl,    setSubYtUrl]    = useState('');
-  const [subError,    setSubError]    = useState('');
-  const [subSaving,   setSubSaving]   = useState(false);
+  const [subModal,  setSubModal]  = useState<{ semesterId: string } | null>(null);
+  const [subTitle,  setSubTitle]  = useState('');
+  const [subDesc,   setSubDesc]   = useState('');
+  const [subUrl,    setSubUrl]    = useState('');
+  const [subError,  setSubError]  = useState('');
+  const [subSaving, setSubSaving] = useState(false);
 
   // Keep newly-added semesters expanded by default.
   useEffect(() => {
@@ -88,11 +175,8 @@ export function CourseBuilderScreen({ navigation }: Props) {
     if (!semTitle.trim()) { setSemError('Semester title is required.'); return; }
     setSemSaving(true); setSemError('');
     try {
-      const result = await createSemester(courseId!, {
-        name: semTitle.trim(),
-        sortOrder: course.semesters.length + 1,
-      });
-      addSemester(result.data.id, result.data.name ?? semTitle.trim());
+      const result = await createSemester(courseId!, { title: semTitle.trim() });
+      addSemester(result.data.id, result.data.title ?? semTitle.trim());
       setExpanded((p) => ({ ...p, [result.data.id]: true }));
       setSemModal(false);
     } catch (err) {
@@ -101,9 +185,9 @@ export function CourseBuilderScreen({ navigation }: Props) {
     } finally { setSemSaving(false); }
   };
 
-  const onRenameSemester = (semesterId: string, name: string) => {
-    renameSemester(semesterId, name);
-    updateSemester(semesterId, { name }).catch(() => {});
+  const onRenameSemester = (semesterId: string, title: string) => {
+    renameSemester(semesterId, title);
+    updateSemester(semesterId, { title }).catch(() => {});
   };
 
   const onRemoveSemester = async (semesterId: string) => {
@@ -115,26 +199,39 @@ export function CourseBuilderScreen({ navigation }: Props) {
 
   const onOpenSubjectModal = (semesterId: string) => {
     setSubModal({ semesterId });
-    setSubTitle(''); setSubDesc(''); setSubYtUrl(''); setSubError('');
+    setSubTitle(''); setSubDesc(''); setSubUrl(''); setSubError('');
   };
 
   const onSubmitSubject = async () => {
     if (!subModal) return;
     if (!subTitle.trim()) { setSubError('Title is required.'); return; }
-    if (!subYtUrl.trim()) { setSubError('YouTube video URL is required.'); return; }
     setSubSaving(true); setSubError('');
     try {
-      const r = await createSubject(subModal.semesterId, {
-        title: subTitle.trim(), description: subDesc.trim() || subTitle.trim(),
-        youtubeVideoUrl: subYtUrl.trim(), sortOrder: 1,
-      });
+      const payload: Parameters<typeof createSubject>[1] = {
+        title:       subTitle.trim(),
+        description: subDesc.trim(),
+      };
+      if (subUrl.trim()) {
+        const id = youtubeIdFromInput(subUrl.trim());
+        if (!id) {
+          setSubError("That doesn't look like a valid YouTube URL or ID.");
+          setSubSaving(false);
+          return;
+        }
+        payload.youtubeVideoId = id;
+      }
+      const r = await createSubject(subModal.semesterId, payload);
       addSubject(subModal.semesterId, r.data.id, r.data.title);
       setSubModal(null);
     } catch (err) {
-      setSubError(err instanceof ApiError && err.code === 'INVALID_YOUTUBE_ID'
-        ? "That YouTube URL isn't valid."
-        : 'Failed to add subject. Try again.');
+      if (err instanceof ApiError) setSubError(`[${err.code}] ${err.message}`);
+      else setSubError('Failed to add subject. Try again.');
     } finally { setSubSaving(false); }
+  };
+
+  // ── Add lesson — navigate straight into the editor in create mode ────────
+  const onAddLesson = (semesterId: string, subjectId: string) => {
+    navigation.navigate('LessonEditor', { semesterId, subjectId });
   };
 
   const onRenameSubject = (semId: string, subId: string, title: string) => {
@@ -152,9 +249,10 @@ export function CourseBuilderScreen({ navigation }: Props) {
   const onSaveDraft = async () => {
     if (courseId && course.title.trim()) {
       const patch: Parameters<typeof updateCourse>[1] = {
-        title: course.title.trim(), description: course.description,
+        title:       course.title.trim(),
+        description: course.description.trim(),
       };
-      if (course.coverImageUrl?.trim()) patch.coverImageUrl = course.coverImageUrl.trim();
+      if (course.coverImageUrl.trim()) patch.coverImageUrl = course.coverImageUrl.trim();
       updateCourse(courseId, patch).catch(() => {});
     }
     toast.info(course.title.trim() ? `Draft saved: "${course.title}".` : 'Draft saved.');
@@ -191,7 +289,7 @@ export function CourseBuilderScreen({ navigation }: Props) {
       />
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
-        {/* Basics */}
+        {/* Course basics */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Course basics</Text>
           <View style={{ gap: 12 }}>
@@ -202,10 +300,9 @@ export function CourseBuilderScreen({ navigation }: Props) {
                 placeholder="e.g. Mathematics Foundations"
                 placeholderTextColor={colors.muted}
                 style={styles.input}
+                maxLength={200}
               />
             </Field>
-
-            {/* CourseType picker removed — API does not have a type field */}
 
             <Field label="Description">
               <TextInput
@@ -216,6 +313,7 @@ export function CourseBuilderScreen({ navigation }: Props) {
                 multiline
                 style={[styles.input, styles.textarea]}
                 textAlignVertical="top"
+                maxLength={5000}
               />
             </Field>
 
@@ -257,9 +355,9 @@ export function CourseBuilderScreen({ navigation }: Props) {
                         <GraduationCap size={16} color={colors.accent} />
                       </View>
                       <TextInput
-                        value={sem.name}
+                        value={sem.title}
                         onChangeText={(v) => onRenameSemester(sem.id, v)}
-                        placeholder="Semester name"
+                        placeholder="Semester title"
                         placeholderTextColor="rgba(255,255,255,0.4)"
                         style={styles.semesterTitle}
                       />
@@ -338,17 +436,7 @@ export function CourseBuilderScreen({ navigation }: Props) {
 
                               <Pressable
                                 style={styles.addLine}
-                                onPress={async () => {
-                                  try {
-                                    const r = await createLesson(sub.id, { title: 'Untitled lesson', url: '' });
-                                    const id = addLesson(sem.id, sub.id, r.data.id);
-                                    openLesson(sem.id, sub.id, id ?? r.data.id);
-                                  } catch {
-                                    // Fallback: create locally if API not available
-                                    const id = addLesson(sem.id, sub.id);
-                                    openLesson(sem.id, sub.id, id);
-                                  }
-                                }}
+                                onPress={() => onAddLesson(sem.id, sub.id)}
                               >
                                 <FilePlus size={14} color={colors.primary} />
                                 <Text style={styles.addLineText}>Add lesson</Text>
@@ -381,7 +469,10 @@ export function CourseBuilderScreen({ navigation }: Props) {
             <Text style={styles.addSemesterText}>Add semester</Text>
           </Pressable>
         </View>
-        <DebugPanel tags={['semesters.create', 'subjects.create', 'courses.publish']} title="Builder debug" />
+        <DebugPanel
+          tags={['semesters.create', 'semesters.update', 'subjects.create', 'subjects.update', 'lessons.create', 'courses.publish']}
+          title="Builder debug"
+        />
       </ScrollView>
 
       {/* Sticky save bar */}
@@ -433,22 +524,26 @@ export function CourseBuilderScreen({ navigation }: Props) {
               placeholder="Subject title *"
               placeholderTextColor="#999"
               autoFocus
+              maxLength={200}
+            />
+            <TextInput
+              style={[subStyles.input, subStyles.multi]}
+              value={subDesc}
+              onChangeText={(t) => { setSubDesc(t); setSubError(''); }}
+              placeholder="Description (optional)"
+              placeholderTextColor="#999"
+              multiline
+              maxLength={2000}
             />
             <TextInput
               style={subStyles.input}
-              value={subYtUrl}
-              onChangeText={(t) => { setSubYtUrl(t); setSubError(''); }}
-              placeholder="YouTube video URL * (main subject video)"
+              value={subUrl}
+              onChangeText={(t) => { setSubUrl(t); setSubError(''); }}
+              placeholder="YouTube URL or video ID (optional)"
               placeholderTextColor="#999"
               autoCapitalize="none"
               autoCorrect={false}
-            />
-            <TextInput
-              style={subStyles.input}
-              value={subDesc}
-              onChangeText={setSubDesc}
-              placeholder="Description (optional)"
-              placeholderTextColor="#999"
+              keyboardType="url"
             />
             {subError ? <Text style={subStyles.error}>{subError}</Text> : null}
             <Button full disabled={subSaving} onPress={onSubmitSubject}>
@@ -457,6 +552,7 @@ export function CourseBuilderScreen({ navigation }: Props) {
           </Pressable>
         </Pressable>
       </Modal>
+
     </ScreenContainer>
   );
 }
@@ -466,6 +562,7 @@ const subStyles = StyleSheet.create({
   sheet:    { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, gap: 12 },
   title:    { fontSize: 17, fontWeight: '700', color: '#152A24' },
   input:    { backgroundColor: '#F5F5F5', borderRadius: 12, padding: 14, fontSize: 14, color: '#152A24' },
+  multi:    { minHeight: 70, textAlignVertical: 'top' as const },
   error:    { fontSize: 12, color: '#E53E3E', fontWeight: '600' },
 });
 
@@ -498,7 +595,6 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     fontSize: 14, color: colors.primary,
   },
   textarea: { height: 90, paddingTop: 12, paddingBottom: 12 },
-  typeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
 
   emptyCurriculum: {
     alignItems: 'center', padding: 24, gap: 6,

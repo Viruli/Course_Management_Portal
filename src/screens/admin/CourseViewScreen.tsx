@@ -7,30 +7,35 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ArrowLeft, MoreVertical, Pencil, Trash2, AlertTriangle,
   ChevronDown, ChevronUp, GraduationCap, BookOpen,
-  Layers, Users, PlayCircle, FileText,
+  Layers, PlayCircle, CheckCircle,
 } from 'lucide-react-native';
 import { ScreenContainer } from '../../components/ScreenContainer';
 import { AppBar } from '../../components/AppBar';
 import { IconBtn } from '../../components/IconBtn';
 import { CourseCover } from '../../components/CourseCover';
-import { Avatar } from '../../components/Avatar';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { DebugPanel } from '../../components/DebugPanel';
-import { getCourseById, ApiCourseDetail } from '../../services/courses';
-import { ApiSemester } from '../../services/semesters';
-import { listSubjects, ApiSubject, listLessons, ApiLesson } from '../../services/subjects';
-
-interface SubjectWithLessons  extends ApiSubject  { lessons: ApiLesson[]; }
-interface SemesterWithSubjects extends ApiSemester { subjects: SubjectWithLessons[]; }
+import {
+  getCourseById, deleteCourse,
+  ApiCourseDetail, ApiSemesterInTree,
+} from '../../services/courses';
+import { listSemesters } from '../../services/semesters';
+import { listSubjects, listLessons, ApiLesson } from '../../services/subjects';
+import { ApiError } from '../../services/api';
 import { toast } from '../../store/uiStore';
+import { useCourseBuilderStore } from '../../store/courseBuilderStore';
 import type { Colors } from '../../theme/colors';
 import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
-import { CheckCircle } from 'lucide-react-native';
+
+// Each subject in the embedded tree (no fields beyond id/title/order) gets
+// augmented locally with the lessons list fetched via GET /subjects/:id/lessons.
+type SubjectWithLessons = ApiSemesterInTree['subjects'][number] & { lessons: ApiLesson[] };
+type SemesterRow        = Omit<ApiSemesterInTree, 'subjects'> & { subjects: SubjectWithLessons[] };
 
 interface Props {
   courseId?: string;
-  course?: any;   // legacy — ignored when courseId is present
+  course?: any;          // legacy — ignored when courseId is present
   onBack: () => void;
   onEdit: (courseId: string) => void;
 }
@@ -40,45 +45,136 @@ export function CourseViewScreen({ courseId, onBack, onEdit }: Props) {
   const styles = useThemedStyles(createStyles);
 
   const [detail,        setDetail]        = useState<ApiCourseDetail | null>(null);
-  const [semesters,     setSemesters]     = useState<SemesterWithSubjects[]>([]);
+  const [semesters,     setSemesters]     = useState<SemesterRow[]>([]);
   const [loading,       setLoading]       = useState(true);
+  const [usedBuilderCache, setUsedBuilderCache] = useState(false);
   const [menuOpen,      setMenuOpen]      = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting,      setDeleting]      = useState(false);
+
+  // In-session fallback: if the backend doesn't return the embedded semester
+  // tree from GET /courses/:id (and has no list endpoint), use whatever the
+  // user just authored in the builder for the same courseId.
+  const builderCourseId   = useCourseBuilderStore((s) => s.courseId);
+  const builderSemesters  = useCourseBuilderStore((s) => s.course.semesters);
 
   useEffect(() => {
     if (!courseId) { setLoading(false); return; }
+    let cancelled = false;
     setLoading(true);
 
     const load = async () => {
-      // 1. Course metadata + nested semester/subject tree
+      // 1. Fetch course metadata + embedded semester/subject tree.
       const courseRes = await getCourseById(courseId);
+      if (cancelled) return;
       setDetail(courseRes.data);
 
-      // 2. Semesters — use nested array from GET /courses/:id
-      const semList: any[] = Array.isArray(courseRes.data.semesters)
-        ? courseRes.data.semesters : [];
+      // 2. Read and normalise the embedded semesters array.
+      //    The backend (v1.1) uses semester.name / semester.sortOrder;
+      //    the v1.2 spec uses semester.title / semester.order.
+      //    We handle both so the view works regardless of which the backend returns.
+      const rawData = courseRes.data as any;
+      const rawSems: any[] = Array.isArray(rawData.semesters) ? rawData.semesters : [];
 
-      // 3. For each semester, get subjects (nested or via GET /semesters/:id/subjects)
-      //    Then for each subject, fetch lessons via GET /subjects/:id/lessons
-      const withAll: SemesterWithSubjects[] = await Promise.all(
+      // Normalise into a consistent shape.
+      const normaliseSem = (s: any): ApiSemesterInTree => ({
+        id:           s.id,
+        title:        s.title ?? s.name ?? '',        // v1.2 title | v1.1 name
+        subjectCount: s.subjectCount ?? 0,
+        order:        s.order ?? s.sortOrder ?? 0,    // v1.2 order | v1.1 sortOrder
+        createdAt:    s.createdAt ?? '',
+        updatedAt:    s.updatedAt ?? '',
+        subjects: (Array.isArray(s.subjects) ? s.subjects : []).map((sub: any) => ({
+          id:        sub.id,
+          title:     sub.title ?? sub.name ?? '',
+          order:     sub.order ?? sub.sortOrder ?? 0,
+          createdAt: sub.createdAt ?? '',
+          updatedAt: sub.updatedAt ?? '',
+        })),
+      });
+
+      let semList: ApiSemesterInTree[] = rawSems.map(normaliseSem);
+
+      // 3. If the embedded array is empty (backend not yet returning the tree)
+      //    try the list endpoint as a fallback.
+      if (semList.length === 0 && (courseRes.data.semesterCount ?? 0) > 0) {
+        try {
+          const semRes = await listSemesters(courseId);
+          semList = (semRes.data ?? []).map((s) => normaliseSem(s));
+        } catch { /* leave empty, fall through to builder-cache below */ }
+      }
+
+      // 4. In-session builder-cache fallback: if still empty and the user just
+      //    authored the course in this session, show the builder state.
+      if (
+        semList.length === 0 &&
+        (courseRes.data.semesterCount ?? 0) > 0 &&
+        builderCourseId === courseId &&
+        builderSemesters.length > 0
+      ) {
+        const cached: SemesterRow[] = builderSemesters.map((sem, sIdx) => ({
+          id:           sem.id,
+          title:        sem.title,
+          subjectCount: sem.subjects.length,
+          order:        sIdx + 1,
+          createdAt:    '',
+          updatedAt:    '',
+          subjects: sem.subjects.map((sub, subIdx) => ({
+            id:        sub.id,
+            title:     sub.title,
+            order:     subIdx + 1,
+            createdAt: '',
+            updatedAt: '',
+            lessons:   sub.lessons.map((l, lIdx) => ({
+              id:          l.id,
+              subjectId:   sub.id,
+              courseId:    courseId,
+              semesterId:  sem.id,
+              title:       l.title,
+              description: l.description,
+              url:         l.url,
+              order:       lIdx + 1,
+              deletedAt:   null,
+              createdAt:   '',
+              updatedAt:   '',
+            } as ApiLesson)),
+          })),
+        }));
+        if (!cancelled) {
+          setSemesters(cached);
+          setUsedBuilderCache(true);
+        }
+        return;
+      }
+
+      // 5. For each normalised semester, hydrate subjects (from embedded list or
+      //    separate endpoint) and fetch lessons per subject.
+      const withLessons: SemesterRow[] = await Promise.all(
         semList.map(async (sem) => {
-          // Get subjects
-          let subjects: ApiSubject[] = Array.isArray(sem.subjects) ? sem.subjects : [];
+          // subjects already normalised in step 2; fall back to list endpoint
+          // if they're missing despite subjectCount > 0.
+          let subjects = sem.subjects as any[];
           if (subjects.length === 0 && (sem.subjectCount ?? 0) > 0) {
             try {
               const subRes = await listSubjects(sem.id);
-              subjects = subRes.data ?? [];
-            } catch { subjects = []; }
+              subjects = (subRes.data ?? []).map((s: any) => ({
+                id:        s.id,
+                title:     s.title ?? s.name ?? '',
+                order:     s.order ?? s.sortOrder ?? 0,
+                createdAt: s.createdAt ?? '',
+                updatedAt: s.updatedAt ?? '',
+              }));
+            } catch { /* subjects stays empty */ }
           }
 
-          // Get lessons for each subject
+          // Fetch lessons for each subject.
           const subjectsWithLessons: SubjectWithLessons[] = await Promise.all(
             subjects.map(async (sub) => {
               try {
                 const lesRes = await listLessons(sub.id);
                 return { ...sub, lessons: lesRes.data ?? [] };
               } catch {
-                return { ...sub, lessons: [] };
+                return { ...sub, lessons: [] as ApiLesson[] };
               }
             }),
           );
@@ -87,21 +183,26 @@ export function CourseViewScreen({ courseId, onBack, onEdit }: Props) {
         }),
       );
 
-      setSemesters(withAll);
+      if (!cancelled) {
+        setSemesters(withLessons);
+        setUsedBuilderCache(false);
+      }
     };
 
     load()
-      .catch(() => toast.error('Failed to load course.'))
-      .finally(() => setLoading(false));
+      .catch(() => { if (!cancelled) toast.error('Failed to load course.'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+
+    return () => { cancelled = true; };
   }, [courseId]);
 
   const subjectCount = useMemo(
-    () => semesters.reduce((n, sem) => n + (sem.subjects?.length ?? 0), 0),
+    () => semesters.reduce((n, sem) => n + sem.subjects.length, 0),
     [semesters],
   );
   const lessonCount = useMemo(
     () => semesters.reduce(
-      (n, sem) => n + (sem.subjects ?? []).reduce((m, sub) => m + ((sub as SubjectWithLessons).lessons?.length ?? 0), 0),
+      (n, sem) => n + sem.subjects.reduce((m, sub) => m + sub.lessons.length, 0),
       0,
     ),
     [semesters],
@@ -117,10 +218,20 @@ export function CourseViewScreen({ courseId, onBack, onEdit }: Props) {
     setMenuOpen(false);
     requestAnimationFrame(() => setConfirmDelete(true));
   };
-  const handleDeleteConfirmed = () => {
-    setConfirmDelete(false);
-    toast.success(`Deleted "${resolvedTitle}".`);
-    onBack();
+  const handleDeleteConfirmed = async () => {
+    if (!courseId) return;
+    setDeleting(true);
+    try {
+      await deleteCourse(courseId);
+      toast.success(`Deleted "${resolvedTitle}".`);
+      setConfirmDelete(false);
+      onBack();
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : 'Delete failed. Please try again.';
+      toast.error(msg);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -147,7 +258,12 @@ export function CourseViewScreen({ courseId, onBack, onEdit }: Props) {
                 resizeMode="cover"
               />
             ) : (
-              <CourseCover kind="cs" emblem={resolvedTitle.slice(0, 2).toUpperCase()} tag="" height={180} />
+              <CourseCover
+                kind="cs"
+                emblem={resolvedTitle.slice(0, 2).toUpperCase()}
+                tag=""
+                height={180}
+              />
             )}
           </View>
 
@@ -165,21 +281,9 @@ export function CourseViewScreen({ courseId, onBack, onEdit }: Props) {
 
           {/* Stats */}
           <View style={styles.statsRow}>
-            <StatTile Icon={Layers}   label="Semesters" value={String(detail?.semesterCount ?? semesters.length)} />
-            <StatTile Icon={BookOpen} label="Subjects"  value={String(subjectCount)} />
-            <StatTile Icon={PlayCircle} label="Lessons"   value={String(lessonCount)} />
-            <StatTile Icon={Users}    label="Created by" value={detail?.createdByName ?? '—'} wide />
-          </View>
-
-          {/* Instructor / creator */}
-          <View style={styles.instructorWrap}>
-            <View style={styles.instructorRow}>
-              <Avatar size={42} name={detail?.createdByName ?? '?'} variant="dark" />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.instructorLabel}>Created by</Text>
-                <Text style={styles.instructorName}>{detail?.createdByName ?? '—'}</Text>
-              </View>
-            </View>
+            <StatTile Icon={Layers}     label="Semesters" value={String(detail?.semesterCount ?? semesters.length)} />
+            <StatTile Icon={BookOpen}   label="Subjects"  value={String(subjectCount)} />
+            <StatTile Icon={PlayCircle} label="Lessons"   value={String(lessonCount)} wide />
           </View>
 
           {/* Curriculum */}
@@ -190,14 +294,35 @@ export function CourseViewScreen({ courseId, onBack, onEdit }: Props) {
                 {semesters.length} semester{semesters.length === 1 ? '' : 's'} · {subjectCount} subject{subjectCount === 1 ? '' : 's'}
               </Text>
             </View>
+            {usedBuilderCache ? (
+              <View style={styles.cacheBanner}>
+                <Text style={styles.cacheBannerText}>
+                  Showing local builder data. The backend's GET /courses/:id is not
+                  returning the embedded semester tree yet, so this view will be
+                  empty on a fresh sign-in until the backend is updated.
+                </Text>
+              </View>
+            ) : null}
             {semesters.length > 0 ? (
               <CurriculumTree semesters={semesters} />
+            ) : (detail?.semesterCount ?? 0) > 0 ? (
+              <View style={styles.cacheBanner}>
+                <Text style={styles.cacheBannerText}>
+                  {detail?.semesterCount} semester{detail?.semesterCount === 1 ? '' : 's'} exist on the backend, but
+                  GET /courses/:id is not returning them and there's no list endpoint
+                  to fall back to. This needs a backend fix — see the DEBUG panel for
+                  the raw response.
+                </Text>
+              </View>
             ) : (
               <Text style={styles.empty}>No semesters added yet.</Text>
             )}
           </View>
 
-          <DebugPanel tags={['courses.getById', 'subjects.list', 'lessons.list']} title="View debug" />
+          <DebugPanel
+            tags={['courses.getById', 'semesters.list', 'subjects.list', 'lessons.list']}
+            title="View debug"
+          />
         </ScrollView>
       )}
 
@@ -217,7 +342,7 @@ export function CourseViewScreen({ courseId, onBack, onEdit }: Props) {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.menuItemLabel}>Edit course</Text>
-                    <Text style={styles.menuItemDesc}>Update content, curriculum and metadata.</Text>
+                    <Text style={styles.menuItemDesc}>Update title, curriculum, and lessons.</Text>
                   </View>
                 </Pressable>
 
@@ -227,7 +352,7 @@ export function CourseViewScreen({ courseId, onBack, onEdit }: Props) {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.menuItemLabel, { color: colors.error }]}>Delete course</Text>
-                    <Text style={styles.menuItemDesc}>Removes the course and unenrols every student.</Text>
+                    <Text style={styles.menuItemDesc}>Soft-delete; recoverable for 30 days.</Text>
                   </View>
                 </Pressable>
               </View>
@@ -244,27 +369,28 @@ export function CourseViewScreen({ courseId, onBack, onEdit }: Props) {
 
       {/* Delete confirmation */}
       <Modal transparent animationType="fade" visible={confirmDelete} onRequestClose={() => setConfirmDelete(false)}>
-        <Pressable style={styles.dialogBackdrop} onPress={() => setConfirmDelete(false)}>
+        <Pressable style={styles.dialogBackdrop} onPress={() => !deleting && setConfirmDelete(false)}>
           <Pressable style={styles.dialog} onPress={(e) => e.stopPropagation()}>
             <View style={styles.dialogIco}>
               <AlertTriangle size={24} color={colors.error} />
             </View>
             <Text style={styles.dialogTitle}>Delete "{resolvedTitle}"?</Text>
             <Text style={styles.dialogBody}>
-              This permanently removes the course and unenrols every student. This action cannot be undone.
+              Soft-deletes the course; recoverable for 30 days.
             </Text>
             <View style={styles.dialogActions}>
               <View style={{ flex: 1 }}>
-                <Button variant="secondary" full size="lg" onPress={() => setConfirmDelete(false)}>Cancel</Button>
+                <Button variant="secondary" full size="lg" disabled={deleting} onPress={() => setConfirmDelete(false)}>Cancel</Button>
               </View>
               <View style={{ flex: 1 }}>
                 <Button
                   full size="lg"
+                  disabled={deleting}
                   leftIcon={<Trash2 size={16} color={colors.white} />}
                   onPress={handleDeleteConfirmed}
                   style={{ backgroundColor: colors.error, borderColor: colors.error } as any}
                 >
-                  Delete
+                  {deleting ? 'Deleting…' : 'Delete'}
                 </Button>
               </View>
             </View>
@@ -291,7 +417,7 @@ function StatTile({ Icon, label, value, wide }: { Icon: any; label: string; valu
   );
 }
 
-function CurriculumTree({ semesters }: { semesters: SemesterWithSubjects[] }) {
+function CurriculumTree({ semesters }: { semesters: SemesterRow[] }) {
   const colors = useColors();
   const styles = useThemedStyles(createStyles);
   const [open, setOpen] = useState<Record<string, boolean>>(() => {
@@ -303,7 +429,6 @@ function CurriculumTree({ semesters }: { semesters: SemesterWithSubjects[] }) {
     <View style={{ gap: 10 }}>
       {semesters.map((sem) => {
         const isOpen = !!open[sem.id];
-        const semName = (sem as any).title ?? sem.name;
         return (
           <View key={sem.id} style={styles.curSemester}>
             <Pressable
@@ -314,9 +439,9 @@ function CurriculumTree({ semesters }: { semesters: SemesterWithSubjects[] }) {
                 <GraduationCap size={16} color={colors.accent} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.curSemName}>{semName}</Text>
+                <Text style={styles.curSemName}>{sem.title}</Text>
                 <Text style={styles.curSemMeta}>
-                  {(sem.subjects ?? []).length} subject{(sem.subjects ?? []).length === 1 ? '' : 's'}
+                  {sem.subjects.length} subject{sem.subjects.length === 1 ? '' : 's'}
                 </Text>
               </View>
               {isOpen
@@ -326,10 +451,10 @@ function CurriculumTree({ semesters }: { semesters: SemesterWithSubjects[] }) {
 
             {isOpen && (
               <View style={styles.curSemBody}>
-                {(sem.subjects ?? []).length === 0 ? (
+                {sem.subjects.length === 0 ? (
                   <Text style={styles.empty}>No subjects yet.</Text>
                 ) : (
-                  (sem.subjects as SubjectWithLessons[]).map((sub) => (
+                  sem.subjects.map((sub) => (
                     <View key={sub.id} style={styles.curSubject}>
                       <View style={styles.curSubjectHead}>
                         <View style={styles.curSubjectIco}>
@@ -337,13 +462,10 @@ function CurriculumTree({ semesters }: { semesters: SemesterWithSubjects[] }) {
                         </View>
                         <Text style={styles.curSubjectTitle} numberOfLines={2}>{sub.title}</Text>
                         <Text style={styles.curSubjectCount}>
-                          {(sub.lessons ?? []).length} lesson{(sub.lessons ?? []).length === 1 ? '' : 's'}
+                          {sub.lessons.length} lesson{sub.lessons.length === 1 ? '' : 's'}
                         </Text>
                       </View>
-                      {sub.description ? (
-                        <Text style={styles.curSubjectDesc} numberOfLines={2}>{sub.description}</Text>
-                      ) : null}
-                      {(sub.lessons ?? []).map((lesson, i) => (
+                      {sub.lessons.map((lesson, i) => (
                         <View key={lesson.id} style={styles.curLesson}>
                           <View style={styles.curLessonIco}>
                             <Text style={styles.curLessonNum}>{i + 1}</Text>
@@ -381,6 +503,12 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   title: { fontSize: 22, fontWeight: '700', color: colors.primary, letterSpacing: -0.4, lineHeight: 26, marginTop: 2 },
   desc:  { fontSize: 13, color: colors.bodyGreen, lineHeight: 18, marginTop: 2 },
   empty: { fontSize: 12, color: colors.muted, paddingVertical: 8, textAlign: 'center' },
+  cacheBanner: {
+    backgroundColor: colors.warningBg,
+    borderColor: colors.warning, borderWidth: 1,
+    borderRadius: 12, padding: 12,
+  },
+  cacheBannerText: { fontSize: 12, color: colors.warning, lineHeight: 17 },
 
   statsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, paddingTop: 14 },
   stat: {
@@ -399,15 +527,6 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   },
   statValue: { fontSize: 14, fontWeight: '700', color: colors.primary, letterSpacing: -0.2 },
   statLabel: { fontSize: 11, color: colors.bodyGreen, marginTop: 2 },
-
-  instructorWrap: { paddingHorizontal: 16, paddingTop: 14 },
-  instructorRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    padding: 12, borderRadius: 12,
-    backgroundColor: colors.lightGray,
-  },
-  instructorLabel: { fontSize: 11, color: colors.bodyGreen, fontWeight: '600' },
-  instructorName:  { fontSize: 14, fontWeight: '700', color: colors.primary, marginTop: 1 },
 
   section:     { padding: 16, gap: 12, paddingTop: 20 },
   sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
@@ -442,7 +561,6 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: 7, paddingVertical: 2,
     backgroundColor: colors.lightGray, borderRadius: 9999,
   },
-  curSubjectDesc: { fontSize: 11, color: colors.bodyGreen, lineHeight: 15, paddingLeft: 32 },
 
   curLesson: {
     flexDirection: 'row', alignItems: 'center', gap: 8,

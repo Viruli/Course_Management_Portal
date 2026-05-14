@@ -1,16 +1,23 @@
 import { apiFetch, ApiResult } from './api';
 
+// v1.2.0 §17 Semester data model.
 export interface ApiSemester {
   id:           string;
   courseId:     string;
-  name:         string;   // response field
-  title:        string;   // API also returns title (same value)
-  sortOrder:    number;
+  title:        string;
   subjectCount: number;
+  order:        number;
+  deletedAt:    string | null;
   createdAt:    string;
   updatedAt:    string;
 }
 
+// v1.2.0 §5.1 — POST /courses/:id/semesters accepts ONLY `title`. The server
+// auto-assigns `order` as the next sequential position. There is no list
+// endpoint in v1.2.0; semesters are retrieved via GET /courses/:id embedded tree.
+
+// Fallback list endpoint — not documented in v1.2.0 but commonly available.
+// Use only when GET /courses/:id does not return an embedded semesters[] tree.
 export function listSemesters(courseId: string): Promise<ApiResult<ApiSemester[]>> {
   return apiFetch<ApiSemester[]>(`/courses/${courseId}/semesters`, {
     method: 'GET',
@@ -20,7 +27,7 @@ export function listSemesters(courseId: string): Promise<ApiResult<ApiSemester[]
 
 export function createSemester(
   courseId: string,
-  payload: { name: string; sortOrder: number },
+  payload: { title: string },
 ): Promise<ApiResult<ApiSemester>> {
   return apiFetch<ApiSemester>(`/courses/${courseId}/semesters`, {
     method: 'POST',
@@ -31,7 +38,7 @@ export function createSemester(
 
 export function updateSemester(
   id: string,
-  patch: { name?: string; sortOrder?: number },
+  patch: { title?: string },
 ): Promise<ApiResult<ApiSemester>> {
   return apiFetch<ApiSemester>(`/semesters/${id}`, {
     method: 'PATCH',

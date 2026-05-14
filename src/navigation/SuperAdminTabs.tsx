@@ -77,15 +77,15 @@ function SuperMain({ navigation }: any) {
   const [tab, setTab] = React.useState<TabId>('dashboard');
   const initNew = useCourseBuilderStore((s) => s.initNew);
 
-  const onCourseCreated = (courseId: string) => {
-    initNew(courseId);
+  const onCourseCreated = (courseId: string, title: string, description: string, coverImageUrl: string) => {
+    initNew(courseId, title, description, coverImageUrl);
     navigation.navigate('CourseBuilder');
   };
   const openView = (courseId: string) => {
     navigation.navigate('CourseView', { courseId });
   };
   const openEdit = (courseId: string) => {
-    navigation.navigate('CourseView', { courseId, startInEdit: true });
+    navigation.navigate('CourseBuilder', { courseId });
   };
   const goBell  = () => navigation.navigate('Notifications');
   const goAudit = () => navigation.navigate('Audit');
