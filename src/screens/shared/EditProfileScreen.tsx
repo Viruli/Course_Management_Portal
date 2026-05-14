@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  Image, Pressable, ScrollView, StyleSheet, Text, View, Alert,
+  Pressable, ScrollView, StyleSheet, Text, View, Alert,
 } from 'react-native';
 import {
   ArrowLeft, Camera, Trash2, Check, AlertCircle, KeyRound,
@@ -17,8 +17,13 @@ import { useProfileStore, fullName } from '../../store/profileStore';
 import type { ProfileRole } from '../../store/profileStore';
 import { toast } from '../../store/uiStore';
 import { useThemeStore, ThemeMode } from '../../store/themeStore';
+import { updateMyProfile, changePassword as changePasswordApi } from '../../services/profile';
+import { ApiError } from '../../services/api';
 import type { Colors } from '../../theme/colors';
 import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
+
+// Matches API password policy: min 10 chars + upper + lower + number + special
+const PASSWORD_RULE = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{10,}$/;
 
 interface Props {
   role: ProfileRole;
@@ -28,19 +33,34 @@ interface Props {
 export function EditProfileScreen({ role, onBack }: Props) {
   const colors = useColors();
   const styles = useThemedStyles(createStyles);
-  const profile  = useProfileStore((s) => s.profiles[role]);
-  const update   = useProfileStore((s) => s.update);
-  const setPhoto = useProfileStore((s) => s.setPhoto);
+  const mockProfile = useProfileStore((s) => s.profiles[role]);
+  const apiProfile  = useProfileStore((s) => s.apiProfile);
+  const setProfile  = useProfileStore((s) => s.setProfile);
+  const update      = useProfileStore((s) => s.update);
+  const setPhoto    = useProfileStore((s) => s.setPhoto);
 
-  const [firstName, setFirstName] = useState(profile.firstName);
-  const [lastName,  setLastName]  = useState(profile.lastName);
+  // Seed from real API profile when available; fall back to mock
+  const [firstName, setFirstName] = useState(apiProfile?.firstName ?? mockProfile.firstName);
+  const [lastName,  setLastName]  = useState(apiProfile?.lastName  ?? mockProfile.lastName);
 
   const [currentPwd, setCurrentPwd] = useState('');
   const [newPwd,     setNewPwd]     = useState('');
   const [confirmPwd, setConfirmPwd] = useState('');
   const [pwdSection, setPwdSection] = useState(false);
+  const [saving,     setSaving]     = useState(false);
+  const [pwdFieldError, setPwdFieldError] = useState<string | null>(null);
 
-  const passwordMismatch = newPwd.length > 0 && confirmPwd.length > 0 && newPwd !== confirmPwd;
+  // Resolved display values: real API data takes priority over mock.
+  const displayName = apiProfile
+    ? `${apiProfile.firstName} ${apiProfile.lastName}`.trim()
+    : fullName(mockProfile);
+  // Photo: user's in-session pick (local URI) overrides the persistent backend URL.
+  const resolvedPhotoUri = mockProfile.photoUri ?? apiProfile?.profilePhotoUrl ?? undefined;
+
+  const passwordMismatch  = newPwd.length > 0 && confirmPwd.length > 0 && newPwd !== confirmPwd;
+  const passwordPolicyOk  = PASSWORD_RULE.test(newPwd);
+  const passwordSectionValid = !pwdSection || (newPwd.length === 0) ||
+    (currentPwd.length > 0 && passwordPolicyOk && newPwd === confirmPwd);
 
   const handlePickPhoto = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -76,19 +96,61 @@ export function EditProfileScreen({ role, onBack }: Props) {
     }
   };
 
-  const handleSave = () => {
-    update(role, {
-      firstName: firstName.trim() || profile.firstName,
-      lastName:  lastName.trim()  || profile.lastName,
-    });
-    if (pwdSection && newPwd && newPwd === confirmPwd) {
-      // Demo: pretend the password was changed.
-      setCurrentPwd(''); setNewPwd(''); setConfirmPwd('');
-      toast.success('Profile and password updated.');
-    } else {
-      toast.success('Profile updated.');
+  const handleSave = async () => {
+    if (saving || !passwordSectionValid) return;
+    setSaving(true);
+    setPwdFieldError(null);
+
+    try {
+      // Step 1: Save name via PATCH /me (when apiProfile exists)
+      if (apiProfile) {
+        const result = await updateMyProfile({
+          firstName: firstName.trim() || apiProfile.firstName,
+          lastName:  lastName.trim()  || apiProfile.lastName,
+        });
+        setProfile(result.data);
+      } else {
+        // Mock update when real auth not yet wired
+        update(role, {
+          firstName: firstName.trim() || mockProfile.firstName,
+          lastName:  lastName.trim()  || mockProfile.lastName,
+        });
+      }
+
+      // Step 2: Change password if the section is open and has a new value
+      if (pwdSection && newPwd && currentPwd && passwordPolicyOk && newPwd === confirmPwd) {
+        try {
+          await changePasswordApi(currentPwd, newPwd);
+          setCurrentPwd(''); setNewPwd(''); setConfirmPwd('');
+          toast.success('Profile and password updated.');
+        } catch (pwdErr) {
+          if (pwdErr instanceof ApiError) {
+            if (pwdErr.code === 'VALIDATION_ERROR') {
+              setPwdFieldError(pwdErr.details?.newPassword?.[0] ?? pwdErr.details?.currentPassword?.[0] ?? pwdErr.message);
+            } else if (pwdErr.code === 'INVALID_PASSWORD' || pwdErr.code === 'WRONG_PASSWORD') {
+              setPwdFieldError('Current password is incorrect.');
+            } else {
+              setPwdFieldError(pwdErr.message);
+            }
+          } else {
+            toast.error('Profile saved but password change failed. Please try again.');
+          }
+          return; // Don't navigate back — let user see the password error
+        }
+      } else {
+        toast.success('Profile updated.');
+      }
+
+      onBack();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        toast.error(err.message);
+      } else {
+        toast.error('Something went wrong. Please try again.');
+      }
+    } finally {
+      setSaving(false);
     }
-    onBack();
   };
 
   return (
@@ -103,9 +165,9 @@ export function EditProfileScreen({ role, onBack }: Props) {
           <View style={styles.avatarWrap}>
             <Avatar
               size={96}
-              name={fullName(profile)}
+              name={displayName}
               variant={role === 'super' ? 'lime' : role === 'admin' ? 'dark' : 'default'}
-              photoUri={profile.photoUri}
+              photoUri={resolvedPhotoUri}
             />
             <View style={styles.cameraBadge}>
               <Camera size={14} color={colors.primary} />
@@ -120,7 +182,7 @@ export function EditProfileScreen({ role, onBack }: Props) {
               <Camera size={14} color={colors.primary} />
               <Text style={styles.photoBtnText}>Take photo</Text>
             </Pressable>
-            {profile.photoUri ? (
+            {resolvedPhotoUri ? (
               <Pressable
                 style={[styles.photoBtn, { backgroundColor: colors.errorBg }]}
                 onPress={() => setPhoto(role, undefined)}
@@ -146,7 +208,7 @@ export function EditProfileScreen({ role, onBack }: Props) {
           <View style={{ gap: 6 }}>
             <Text style={styles.fieldLabel}>Email</Text>
             <View style={styles.readOnly}>
-              <Text style={styles.readOnlyText}>{profile.email}</Text>
+              <Text style={styles.readOnlyText}>{apiProfile?.email ?? mockProfile.email}</Text>
               <Text style={styles.readOnlyHint}>Email can't be changed.</Text>
             </View>
           </View>
@@ -156,7 +218,10 @@ export function EditProfileScreen({ role, onBack }: Props) {
         <View style={styles.section}>
           <Pressable
             style={styles.pwdHead}
-            onPress={() => setPwdSection((v) => !v)}
+            onPress={() => {
+              setPwdSection((v) => !v);
+              setCurrentPwd(''); setNewPwd(''); setConfirmPwd(''); setPwdFieldError(null);
+            }}
           >
             <View style={styles.pwdHeadIco}>
               <KeyRound size={16} color={colors.primary} />
@@ -175,16 +240,17 @@ export function EditProfileScreen({ role, onBack }: Props) {
               <Input
                 label="Current password"
                 value={currentPwd}
-                onChangeText={setCurrentPwd}
+                onChangeText={(t) => { setCurrentPwd(t); setPwdFieldError(null); }}
                 password
-                placeholder="Your current password"
+                placeholder="Enter your current password"
               />
               <Input
                 label="New password"
                 value={newPwd}
-                onChangeText={setNewPwd}
+                onChangeText={(t) => { setNewPwd(t); setPwdFieldError(null); }}
                 password
-                placeholder="At least 6 characters"
+                placeholder="At least 10 characters"
+                hint="10+ chars with uppercase, lowercase, a number and a symbol."
               />
               <Input
                 label="Confirm new password"
@@ -197,6 +263,18 @@ export function EditProfileScreen({ role, onBack }: Props) {
                 <View style={styles.errorRow}>
                   <AlertCircle size={13} color={colors.error} />
                   <Text style={styles.errorText}>Passwords don't match.</Text>
+                </View>
+              ) : null}
+              {newPwd.length > 0 && !passwordPolicyOk && !passwordMismatch ? (
+                <View style={styles.errorRow}>
+                  <AlertCircle size={13} color={colors.error} />
+                  <Text style={styles.errorText}>Use 10+ chars with uppercase, lowercase, a number and a symbol.</Text>
+                </View>
+              ) : null}
+              {pwdFieldError ? (
+                <View style={styles.errorRow}>
+                  <AlertCircle size={13} color={colors.error} />
+                  <Text style={styles.errorText}>{pwdFieldError}</Text>
                 </View>
               ) : null}
             </View>
@@ -215,10 +293,10 @@ export function EditProfileScreen({ role, onBack }: Props) {
           <Button
             full size="lg"
             leftIcon={<Check size={16} color={colors.white} />}
-            disabled={pwdSection && (passwordMismatch || (newPwd.length > 0 && newPwd.length < 6))}
+            disabled={saving || !passwordSectionValid}
             onPress={handleSave}
           >
-            Save
+            {saving ? 'Saving…' : 'Save'}
           </Button>
         </View>
       </View>

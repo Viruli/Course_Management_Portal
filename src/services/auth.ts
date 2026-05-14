@@ -27,6 +27,16 @@ function toAppRole(apiRole: ApiUserRole): Role {
   return apiRole;
 }
 
+// ─── Password reset (public — no auth required) ──────────────────────────────
+
+export function resetPassword(email: string): Promise<ApiResult<{ message: string }>> {
+  return apiFetch<{ message: string }>('/auth/password-reset', {
+    method: 'POST',
+    body: { email },
+    tag: 'auth.passwordReset',
+  });
+}
+
 // ─── Register ────────────────────────────────────────────────────────────────
 
 export interface RegisterPayload {
