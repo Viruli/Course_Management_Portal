@@ -20,11 +20,12 @@ interface Props {
   role: Role;
   onOpenAudit: () => void;
   onOpenCourses: () => void;
+  onOpenStudents?: () => void;
   onOpenAdmins?: () => void;
   onEditProfile: () => void;
 }
 
-export function MoreScreen({ role, onOpenAudit, onOpenCourses, onOpenAdmins, onEditProfile }: Props) {
+export function MoreScreen({ role, onOpenAudit, onOpenCourses, onOpenStudents, onOpenAdmins, onEditProfile }: Props) {
   const colors = useColors();
   const styles = useThemedStyles(createStyles);
   const isSuper    = role === 'super';
@@ -34,7 +35,7 @@ export function MoreScreen({ role, onOpenAudit, onOpenCourses, onOpenAdmins, onE
   const baseItems = [
     { Icon: BookOpen,  label: 'Courses',       sub: '18 published · 3 drafts',     onPress: onOpenCourses },
     { Icon: History,   label: 'Audit log',     sub: 'Recent platform activity',    onPress: onOpenAudit },
-    { Icon: Users,     label: 'Students',      sub: '1,284 active',                onPress: () => toast.info('Student directory coming soon.') },
+    { Icon: Users,     label: 'Users',          sub: 'View and manage users',       onPress: onOpenStudents ?? (() => toast.info('User directory coming soon.')) },
     { Icon: Megaphone, label: 'Announcements', sub: 'Send platform updates',       onPress: () => toast.info('Announcements composer coming soon.') },
     { Icon: Settings,  label: 'Settings',      sub: 'Account, security, prefs',    onPress: onEditProfile },
     { Icon: LifeBuoy,  label: 'Help & support', sub: 'Contact us, FAQ',            onPress: () => toast.info('Support reachable at help@edupath.lk.') },

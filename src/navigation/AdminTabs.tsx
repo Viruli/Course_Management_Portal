@@ -14,6 +14,8 @@ import { CourseViewScreen } from '../screens/admin/CourseViewScreen';
 import { LessonEditorScreen } from '../screens/admin/LessonEditorScreen';
 import { MoreScreen } from '../screens/admin/MoreScreen';
 import { AuditScreen } from '../screens/admin/AuditScreen';
+import { UsersScreen } from '../screens/superadmin/UsersScreen';
+import { UserDetailScreen } from '../screens/superadmin/UserDetailScreen';
 import { NotificationsScreen } from '../screens/student/NotificationsScreen';
 import { EditProfileScreen } from '../screens/shared/EditProfileScreen';
 import { SAMPLE_BUILDER_COURSE } from '../data/mock';
@@ -88,8 +90,9 @@ function AdminMain({ navigation }: any) {
     load(SAMPLE_BUILDER_COURSE);
     navigation.navigate('CourseBuilder');
   };
-  const goBell = () => navigation.navigate('Notifications');
-  const goAudit = () => navigation.navigate('Audit');
+  const goBell       = () => navigation.navigate('Notifications');
+  const goAudit      = () => navigation.navigate('Audit');
+  const goStudents   = () => navigation.navigate('Users');
   const goEditProfile = () => navigation.navigate('EditProfile');
 
   return (
@@ -104,6 +107,7 @@ function AdminMain({ navigation }: any) {
             role="admin"
             onOpenAudit={goAudit}
             onOpenCourses={() => setTab('courses')}
+            onOpenStudents={goStudents}
             onEditProfile={goEditProfile}
           />
         )}
@@ -135,6 +139,8 @@ export function AdminTabs() {
       <Stack.Screen name="CourseBuilder" component={CourseBuilderScreen as any} />
       <Stack.Screen name="LessonEditor" component={LessonEditorScreen as any} />
       <Stack.Screen name="Audit" component={AuditScreen} />
+      <Stack.Screen name="Users" component={UsersScreen as any} />
+      <Stack.Screen name="UserDetail" component={UserDetailScreen as any} />
       <Stack.Screen name="Notifications">
         {({ navigation }) => (
           <AdminNotifications onBack={() => navigation.goBack()} />
