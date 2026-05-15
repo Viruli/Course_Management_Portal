@@ -94,12 +94,12 @@ export function SuperQueueScreen() {
             : pendingEnr.map((e) => (
               <View key={e.id} style={styles.card}>
                 <View style={styles.head}>
-                  <Avatar size={36} name={e.studentName} variant="dark" />
+                  <Avatar size={36} name={e.studentName ?? e.studentUid} variant="dark" />
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.name}>{e.studentName}</Text>
-                    <Text style={styles.email} numberOfLines={1}>→ {e.courseTitle}</Text>
+                    <Text style={styles.name}>{e.studentName ?? `User ${e.studentUid.slice(0, 8)}…`}</Text>
+                    <Text style={styles.email} numberOfLines={1}>→ {e.courseTitle ?? e.courseId}</Text>
                   </View>
-                  <Text style={styles.when}>{new Date(e.submittedAt).toLocaleDateString()}</Text>
+                  <Text style={styles.when}>{new Date(e.submittedAt ?? e.createdAt).toLocaleDateString()}</Text>
                 </View>
                 <View style={styles.actions}>
                   <View style={{ flex: 1 }}>

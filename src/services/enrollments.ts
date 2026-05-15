@@ -1,14 +1,24 @@
 import { apiFetch, ApiResult } from './api';
 
+// The API (§10.1) returns only core IDs and timestamps.
+// studentName / studentEmail / courseTitle are NOT in the spec response;
+// they are kept as optional in case a future backend version adds them.
 export interface ApiAdminEnrollment {
   id:           string;
   studentUid:   string;
-  studentName:  string;
-  studentEmail: string;
   courseId:     string;
-  courseTitle:  string;
   state:        'pending' | 'approved' | 'rejected' | 'withdrawn';
-  submittedAt:  string;
+  reason:       string | null;
+  approvedAt:   string | null;
+  rejectedAt:   string | null;
+  withdrawnAt:  string | null;
+  createdAt:    string;
+  updatedAt:    string;
+  // Optional extras the backend may include:
+  studentName?:  string;
+  studentEmail?: string;
+  courseTitle?:  string;
+  submittedAt?:  string;
 }
 
 interface PaginatedEnrollments {

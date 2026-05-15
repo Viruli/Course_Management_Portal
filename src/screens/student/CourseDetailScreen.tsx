@@ -15,6 +15,7 @@ import { Button } from '../../components/Button';
 import { LESSON, SAMPLE_BUILDER_COURSE } from '../../data/mock';
 import { toast } from '../../store/uiStore';
 import { getCourseById, ApiCourseDetail } from '../../services/courses';
+import { listLessons, ApiLesson } from '../../services/subjects';
 import { enrollInCourse, listMyEnrollments, ApiEnrollment } from '../../services/studentEnrollments';
 import { ApiError } from '../../services/api';
 import type { Colors } from '../../theme/colors';
@@ -37,12 +38,27 @@ export function CourseDetailScreen({ courseId, course, onBack, onPlay, onEnrol }
   const [apiCourse,  setApiCourse]  = useState<ApiCourseDetail | null>(null);
   const [enrolment,  setEnrolment]  = useState<ApiEnrollment | null>(null);
   const [enrolling,  setEnrolling]  = useState(false);
+  const [lessonsMap, setLessonsMap] = useState<Record<string, ApiLesson[]>>({});
 
   useEffect(() => {
     if (!courseId) return;
     let cancelled = false;
-    getCourseById(courseId).then((r) => {
-      if (!cancelled) setApiCourse(r.data);
+    getCourseById(courseId).then(async (r) => {
+      if (cancelled) return;
+      setApiCourse(r.data);
+      // Fetch lessons for each subject so the curriculum tree shows full detail
+      const sems: any[] = Array.isArray((r.data as any).semesters) ? (r.data as any).semesters : [];
+      const allSubjects = sems.flatMap((s: any) => s.subjects ?? []);
+      const results = await Promise.allSettled(
+        allSubjects.map((sub: any) => listLessons(sub.id)),
+      );
+      if (cancelled) return;
+      const map: Record<string, ApiLesson[]> = {};
+      allSubjects.forEach((sub: any, idx: number) => {
+        const r2 = results[idx];
+        map[sub.id] = r2.status === 'fulfilled' ? (r2.value.data ?? []) : [];
+      });
+      setLessonsMap(map);
     }).catch((err) => {
       if (!cancelled) {
         if (err instanceof ApiError && err.code === 'COURSE_NOT_FOUND') {
@@ -220,7 +236,7 @@ export function CourseDetailScreen({ courseId, course, onBack, onPlay, onEnrol }
           )}
 
           {tab === 'curriculum' && (
-            <CurriculumTree semesters={curriculum} onPlayActive={onPlay} />
+            <CurriculumTree semesters={curriculum} lessonsMap={lessonsMap} onPlayActive={onPlay} />
           )}
 
           {tab === 'reviews' && (
@@ -296,10 +312,17 @@ export function CourseDetailScreen({ courseId, course, onBack, onPlay, onEnrol }
   );
 }
 
-function CurriculumTree({ semesters, onPlayActive }: { semesters: BuilderSemester[]; onPlayActive: () => void }) {
+function CurriculumTree({
+  semesters,
+  lessonsMap,
+  onPlayActive,
+}: {
+  semesters: BuilderSemester[];
+  lessonsMap: Record<string, ApiLesson[]>;
+  onPlayActive: () => void;
+}) {
   const colors = useColors();
   const styles = useThemedStyles(createStyles);
-  // First semester open by default.
   const [open, setOpen] = useState<Record<string, boolean>>(() => {
     const init: Record<string, boolean> = {};
     if (semesters[0]) init[semesters[0].id] = true;
@@ -310,8 +333,17 @@ function CurriculumTree({ semesters, onPlayActive }: { semesters: BuilderSemeste
     <View style={{ gap: 10 }}>
       {semesters.map((sem, i) => {
         const isOpen = !!open[sem.id];
-        const subjectCount = sem.subjects.length;
-        const lessonCount = sem.subjects.reduce((n, s) => n + s.lessons.length, 0);
+        const subjects = (sem as any).subjects ?? [];
+        const subjectCount = subjects.length;
+        // Use fetched lessonsMap for counts when available
+        const lessonCount = subjects.reduce((n: number, s: any) => {
+          const fetchedLessons = lessonsMap[s.id];
+          const count = fetchedLessons !== undefined
+            ? fetchedLessons.length
+            : (s.lessons?.length ?? 0);
+          return n + count;
+        }, 0);
+
         return (
           <View key={sem.id} style={styles.curSemester}>
             <Pressable
@@ -322,7 +354,7 @@ function CurriculumTree({ semesters, onPlayActive }: { semesters: BuilderSemeste
                 <GraduationCap size={16} color={colors.accent} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.curSemName}>{sem.title}</Text>
+                <Text style={styles.curSemName}>{(sem as any).title ?? (sem as any).name}</Text>
                 <Text style={styles.curSemMeta}>
                   {subjectCount} subject{subjectCount === 1 ? '' : 's'} · {lessonCount} lesson{lessonCount === 1 ? '' : 's'}
                 </Text>
@@ -334,16 +366,19 @@ function CurriculumTree({ semesters, onPlayActive }: { semesters: BuilderSemeste
 
             {isOpen && (
               <View style={styles.curSemBody}>
-                {sem.subjects.map((sub) => (
+                {subjects.map((sub: any) => {
+                  // Prefer lessons fetched via API; fall back to embedded array
+                  const lessons: any[] = lessonsMap[sub.id] ?? sub.lessons ?? [];
+                  return (
                   <View key={sub.id} style={styles.curSubject}>
                     <View style={styles.curSubjectHead}>
                       <View style={styles.curSubjectIco}>
                         <BookOpen size={13} color={colors.primary} />
                       </View>
                       <Text style={styles.curSubjectTitle}>{sub.title}</Text>
-                      <Text style={styles.curSubjectCount}>{sub.lessons.length}</Text>
+                      <Text style={styles.curSubjectCount}>{lessons.length}</Text>
                     </View>
-                    {sub.lessons.map((lesson, lessonIdx) => (
+                    {lessons.map((lesson: any, lessonIdx: number) => (
                       <CurriculumLesson
                         key={lesson.id}
                         index={lessonIdx + 1}
@@ -353,7 +388,8 @@ function CurriculumTree({ semesters, onPlayActive }: { semesters: BuilderSemeste
                       />
                     ))}
                   </View>
-                ))}
+                  );
+                })}
               </View>
             )}
           </View>
@@ -394,10 +430,10 @@ function CurriculumLesson({
               <Text style={styles.metaChipText}>Video</Text>
             </View>
           ) : null}
-          {lesson.attachments.length ? (
+          {(lesson.attachments?.length ?? 0) > 0 ? (
             <View style={styles.metaChip}>
               <Paperclip size={10} color={colors.bodyGreen} />
-              <Text style={styles.metaChipText}>{lesson.attachments.length}</Text>
+              <Text style={styles.metaChipText}>{lesson.attachments!.length}</Text>
             </View>
           ) : null}
         </View>

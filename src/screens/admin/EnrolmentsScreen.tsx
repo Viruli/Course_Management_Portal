@@ -173,14 +173,19 @@ export function EnrolmentsScreen() {
           />
         ) : filtered.map((e) => {
           const isProcessing = processingId === e.id;
+          // Resolved display values — prefer enriched fields, fall back to IDs
+          const displayName  = e.studentName  ?? `User ${e.studentUid.slice(0, 8)}…`;
+          const displayEmail = e.studentEmail ?? e.studentUid;
+          const displayDate  = new Date(e.submittedAt ?? e.createdAt).toLocaleDateString();
+          const displayCourse = e.courseTitle ?? `Course ${e.courseId.slice(0, 8)}…`;
           return (
             <View key={e.id} style={styles.card}>
               <View style={styles.headRow2}>
-                <Avatar size={40} name={e.studentName} variant="dark" />
+                <Avatar size={40} name={displayName} variant="dark" />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.name}>{e.studentName}</Text>
-                  <Text style={styles.sub}>{e.studentEmail}</Text>
-                  <Text style={styles.when}>{new Date(e.submittedAt).toLocaleDateString()}</Text>
+                  <Text style={styles.name}>{displayName}</Text>
+                  <Text style={styles.sub} numberOfLines={1}>{displayEmail}</Text>
+                  <Text style={styles.when}>{displayDate}</Text>
                 </View>
                 {e.state === 'pending'  && <Badge tone="warning">Pending</Badge>}
                 {e.state === 'approved' && <Badge tone="success">Approved</Badge>}
@@ -193,9 +198,16 @@ export function EnrolmentsScreen() {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.courseLabel}>Course</Text>
-                  <Text style={styles.courseName} numberOfLines={1}>{e.courseTitle ?? '—'}</Text>
+                  <Text style={styles.courseName} numberOfLines={1}>{displayCourse}</Text>
                 </View>
               </View>
+
+              {e.state === 'rejected' && e.reason ? (
+                <View style={styles.reasonRow}>
+                  <Text style={styles.reasonLabel}>Reason: </Text>
+                  <Text style={styles.reasonText}>{e.reason}</Text>
+                </View>
+              ) : null}
 
               {/* Only show action buttons on the pending tab */}
               {tabFilter === 'pending' && (
@@ -205,7 +217,7 @@ export function EnrolmentsScreen() {
                       variant="secondary" size="sm" full
                       leftIcon={<X size={13} color={colors.primary} />}
                       disabled={isProcessing}
-                      onPress={() => setRejectTarget({ id: e.id, name: e.studentName })}
+                      onPress={() => setRejectTarget({ id: e.id, name: displayName })}
                     >
                       Reject
                     </Button>
@@ -215,7 +227,7 @@ export function EnrolmentsScreen() {
                       size="sm" full
                       leftIcon={<Check size={13} color={colors.white} />}
                       disabled={isProcessing}
-                      onPress={() => handleApprove(e.id, e.studentName, e.courseTitle)}
+                      onPress={() => handleApprove(e.id, displayName, displayCourse)}
                     >
                       {isProcessing ? 'Approving…' : 'Approve'}
                     </Button>
@@ -367,6 +379,9 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   courseLabel:  { fontSize: 11, color: colors.bodyGreen, fontWeight: '500' },
   courseName:   { fontSize: 13, fontWeight: '700', color: colors.primary, marginTop: 2 },
   actions:      { flexDirection: 'row', gap: 8 },
+  reasonRow:    { flexDirection: 'row', flexWrap: 'wrap', gap: 2, paddingTop: 4 },
+  reasonLabel:  { fontSize: 11, fontWeight: '700', color: colors.bodyGreen },
+  reasonText:   { fontSize: 11, color: colors.bodyGreen, flex: 1 },
 
   // Modal
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },

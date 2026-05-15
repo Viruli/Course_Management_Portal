@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-`slp-mobile` — the Expo / React Native mobile frontend for a Course Management Portal (CMP). The app is a **partially-integrated design build**: UI and navigation are complete with mock data; backend integration is in progress one feature at a time. The API contract lives in `.claude/Blueprint/blueprint_mobile.md` (architecture) and API Reference v1.1.0 in conversation history. The app must remain Expo Go-compatible until Firebase / native packages are required.
+`slp-mobile` — the Expo / React Native mobile frontend for a Course Management Portal (CMP). The app is a **progressively-integrated design build**: UI and navigation are complete; backend integration is being wired one feature at a time. The API contract lives in `.claude/Blueprint/blueprint_mobile.md` (architecture) and API Reference v1.1.0/v1.2.0 in `.claude/_specs/`. The app must remain Expo Go-compatible until Firebase / native packages are required.
 
 Reference design lives in `src/CMP/` — the original web prototype (plain HTML + React via CDN). Not bundled; treat as a styling reference only.
 
@@ -97,9 +97,15 @@ Currently wired service files:
 | `courses.ts` | student catalog + admin CRUD (list, fetch, publish, archive, update, delete) |
 | `semesters.ts` | create / update semesters |
 | `subjects.ts` | create / update subjects |
+| `lessons.ts` | list / create / update lessons per subject |
 | `enrollments.ts` | admin enrollment queue (list, approve, reject) |
+| `studentEnrollments.ts` | student enrollment lifecycle (enroll, list mine, withdraw) |
+| `progress.ts` | subject completion + course progress % (mark complete, last-accessed, get progress) |
 | `registrations.ts` | admin registration queue (list, approve, reject) |
 | `attachments.ts` | file upload / download |
+| `profile.ts` | update own profile fields, change password |
+| `userManagement.ts` | super-admin user roster (list, get, suspend, reactivate) |
+| `auditLog.ts` | super-admin paginated audit log (category, action, target filters) |
 | `storage.ts` | persistent local caching |
 | `getAuthToken.ts` | convenience wrapper for Firebase ID token |
 | `firebase.ts` | Firebase app initialisation (Auth, Storage) |
@@ -111,14 +117,13 @@ import { apiFetch } from './api';
 export function getMyProfile(token: string) {
   return apiFetch<UserProfile>('/me', {
     method: 'GET',
-    token,
     tag: 'profile.getMe',    // appears in DebugPanel
     redactFields: [],
   });
 }
 ```
 
-**Pagination pattern** (registrations, enrollments): responses include `{ data[], nextCursor, total }`. Build query strings with `URLSearchParams`.
+**Pagination pattern** (registrations, enrollments, user management, audit log): responses include `{ data[], nextCursor, total }`. Build query strings with `URLSearchParams`.
 
 **Error handling pattern in screens:**
 ```ts
@@ -139,9 +144,23 @@ try {
 
 `ApiError` carries `.code` (machine-readable), `.status` (HTTP), `.details` (field-level validation from 400 responses), and `.requestId`.
 
+**Enrollment error codes** (used in `CourseDetailScreen` and `studentEnrollments.ts`):
+- `ENROLLMENT_PENDING` — student already has a pending request; show status instead of re-enroll button
+- `ALREADY_ENROLLED` — active enrollment exists
+- `COOLOFF_ACTIVE` — re-enrollment blocked after withdrawal; show remaining cooloff time
+- `COURSE_NOT_FOUND` — course was archived/deleted after screen loaded
+
+After catching an enrollment error, re-fetch `listMyEnrollments()` to get current state rather than deriving it from the error response.
+
+**Progress tracking pattern:**
+- `updateLastAccessed(subjectId, ctx)` — fire-and-forget on every subject view; never await, never show errors
+- `markSubjectComplete(subjectId, ctx)` — called explicitly when student finishes; update local `completed` map optimistically, then confirm via `getSubjectProgress()`
+- `getCourseProgress(courseId)` — fetched on demand (e.g., `MyLearningScreen` fetches in parallel for all approved enrollments using `Promise.allSettled`)
+- Progress state is per-screen (not global); there is no progress Zustand store
+
 ### Debug infrastructure
 
-`src/store/debugStore.ts` — in-memory log (max 50 entries) of every `apiFetch` call. Auto-populated when a `tag` is passed. Use the `debug` helper for non-hook contexts.
+`src/store/debugStore.ts` — in-memory log (max 50 entries) of every `apiFetch` call. Auto-populated when a `tag` is passed.
 
 `src/components/DebugPanel.tsx` — drop into any screen during development:
 ```tsx
@@ -154,9 +173,9 @@ Hidden automatically when `debugStore.enabled` is false or the tag has no entrie
 All in `src/store/`. No persistence layer yet — all stores are in-memory only.
 
 - `appStore` — current role + `publicStep` (which auth screen to show)
-- `profileStore` — dual-layer: real `apiProfile` (populated at sign-in) **and** mock `profiles` per role. Screens not yet wired to `apiProfile` still render mock data.
+- `profileStore` — dual-layer: real `apiProfile` (populated at sign-in) **and** mock `profiles` per role. Not-yet-wired screens still render mock data.
 - `usersStore` — full user roster seeded from `SAMPLE_USERS`; mutated by approve/suspend
-- `approvalsStore` — registration + enrolment queues; approve/reject mutates here
+- `approvalsStore` — registration + enrolment queues; approve/reject mutates here. Includes `approveAllEnrolments()` for batch approval (returns `{ approved, failed }`).
 - `notificationsStore` — keyed by audience (`'student'` / `'admin'`), with read-state
 - `courseBuilderStore` — in-progress course; shared between `CourseBuilderScreen` and `LessonEditorScreen`
 - `themeStore` — user preference (`light | dark | system`) + resolved OS scheme
@@ -199,7 +218,17 @@ Never import colours at module scope — `StyleSheet.create` runs once at load a
 
 The most complex sub-feature. Frontend hierarchy: **Course → Semester → Subject → Lesson → Attachments**. `courseBuilderStore` holds the in-progress course; `CourseBuilderScreen` renders nested accordions; tapping a lesson navigates to `LessonEditorScreen`. `SAMPLE_BUILDER_COURSE` in `data/mock.ts` is loaded when "Edit" is tapped on any published course.
 
-**API hierarchy (v1.1.0):** Course → Semester → Subject (with `youtubeVideoId`) → Attachments. The frontend's extra **Lesson** layer is pending reconciliation with the backend team.
+**API hierarchy (v1.1.0/v1.2.0):** Course → Semester → Subject (with `youtubeVideoId`) → Attachments. The frontend's extra **Lesson** layer is being reconciled with the backend team.
+
+### API compatibility notes
+
+The deployed backend does not always match the versioned spec. Known divergences:
+
+- **Subject fields**: spec lists only id/title/order; deployed backend returns `description`, `youtubeVideoId`, `attachments` — use them when present
+- **Lesson video URL**: spec says `youtubeVideoId`; deployed backend uses a full `url` field — `LessonPlayerScreen` extracts the video ID from 4 URL patterns (full, short, embed, shorts)
+- **Attachment field names**: v1.1 uses `fileName` / `uploadedAt`; v1.2 uses `filename` / `createdAt` — screens handle both: `att.fileName ?? att.filename`
+- **Course create**: spec lists only `title` as required; deployed backend also requires `description`
+- **Enrollment enrichment**: `listEnrollments` responses may include optional `studentName`, `studentEmail`, `courseTitle` fields — use them for display with the fallback chain `e.studentName ?? \`User ${uid.slice(0,8)}…\``
 
 ### Expo Go constraints
 
@@ -235,4 +264,6 @@ Specs, plans, and sprints are committed on the feature branch and serve as livin
 - Pending registration and enrolment counts on tab badges, dashboard cards, and queue tabs are all derived from `approvalsStore` — they update instantly. Never hard-code counts.
 - `EditProfileScreen` is shared between student and admin flows — lives in `src/screens/shared/`.
 - The OS theme listener is mounted in `App.tsx` and syncs the device colour scheme into `themeStore.systemScheme`.
-- `profileStore.apiProfile` holds the real signed-in user; `profileStore.profiles` holds per-role mock data. Most screens still render mock data — wiring them to `apiProfile` is pending.
+- `profileStore.apiProfile` holds the real signed-in user; `profileStore.profiles` holds per-role mock data. Screens not yet wired to the real API still read from `profiles`.
+- `userManagement.ts` and `auditLog.ts` are super-admin only — the screens that use them must guard with a role check before calling.
+- `LessonPlayerScreen` builds a flat ordered subject list across all semesters and fetches their lessons in parallel via `Promise.allSettled()` — individual lesson-fetch failures are silently skipped so one bad subject doesn't break the whole player.

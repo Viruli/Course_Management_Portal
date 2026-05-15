@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
+  ActivityIndicator, Image, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import {
   ArrowLeft, Check, Trash2, Paperclip, TvMinimalPlay, Plus,
@@ -48,22 +48,35 @@ const attachmentIcon = (kind: BuilderAttachment['kind']) => {
   return FileIco;
 };
 
+// Auto-saves fields while the user is typing (debounced).
+// On Done, always call handleDone which does an explicit full PATCH — this is
+// more reliable than flush() because the pending buffer may already be empty
+// if the debounce fired, in which case flush() would send nothing.
 function useDebouncedPatch(lessonId: string | undefined) {
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timer   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pending = useRef<Parameters<typeof apiUpdateLesson>[1]>({});
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
-  return (patch: Parameters<typeof apiUpdateLesson>[1]) => {
+  const patch = (p: Parameters<typeof apiUpdateLesson>[1]) => {
     if (!lessonId) return;
-    pending.current = { ...pending.current, ...patch };
+    pending.current = { ...pending.current, ...p };
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
       const body = pending.current;
       pending.current = {};
-      apiUpdateLesson(lessonId, body).catch(() => {/* surface via debug panel */});
-    }, 600);
+      if (Object.keys(body).length > 0) {
+        apiUpdateLesson(lessonId, body).catch(() => {});
+      }
+    }, 800);
   };
+
+  const cancelPending = () => {
+    if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+    pending.current = {};
+  };
+
+  return { patch, cancelPending };
 }
 
 export function LessonEditorScreen({ route, navigation }: Props) {
@@ -93,7 +106,7 @@ export function LessonEditorScreen({ route, navigation }: Props) {
 
   // ── Edit-mode infrastructure ──────────────────────────────────────────────
   const [uploading, setUploading] = useState(false);
-  const patch = useDebouncedPatch(lessonId);
+  const { patch, cancelPending } = useDebouncedPatch(lessonId);
 
   // The form binds to either the draft (create) or the lesson (edit).
   const formTitle = isCreateMode ? draft.title       : (lesson!.title ?? '');
@@ -154,6 +167,31 @@ export function LessonEditorScreen({ route, navigation }: Props) {
     } finally { setSaving(false); }
   };
 
+  const handleDone = async () => {
+    if (!isCreateMode && lessonId) {
+      // Cancel the debounce and do ONE explicit PATCH with the full current
+      // state. This is more reliable than flush() because the debounce buffer
+      // may already be empty if 800 ms have passed since the last keystroke.
+      cancelPending();
+      setSaving(true);
+      try {
+        await apiUpdateLesson(lessonId, {
+          title:       formTitle,
+          url:         formUrl,
+          description: formDesc,
+        });
+      } catch (err) {
+        if (err instanceof ApiError) toast.error(`Save failed: ${err.message}`);
+        else toast.error('Save failed. Please try again.');
+        setSaving(false);
+        return;  // don't navigate back on failure
+      } finally {
+        setSaving(false);
+      }
+    }
+    navigation.goBack();
+  };
+
   const handleDeleteLesson = () => {
     if (isCreateMode) { navigation.goBack(); return; }
     apiDeleteLesson(lessonId!).catch(() => {});
@@ -185,7 +223,7 @@ export function LessonEditorScreen({ route, navigation }: Props) {
       });
       addAttachment(semesterId, subjectId, lessonId!, {
         id:   uploaded.data.id,
-        name: uploaded.data.filename,
+        name: uploaded.data.filename ?? (uploaded.data as any).fileName ?? asset.name,
         kind: mimeType.includes('pdf') ? 'pdf' : 'doc',
         size: `${Math.round((asset.size ?? 0) / 1024)} KB`,
       });
@@ -278,21 +316,27 @@ export function LessonEditorScreen({ route, navigation }: Props) {
 
           {formUrl ? (
             ytId ? (
-              <View style={styles.ytPreview}>
-                <View style={styles.ytPreviewFrame}>
-                  <View style={styles.ytPreviewPlay}>
-                    <TvMinimalPlay size={28} color={colors.white} fill={colors.error} />
-                  </View>
-                  <Text style={styles.ytPreviewLabel}>YouTube preview</Text>
-                  <Text style={styles.ytPreviewId}>Video ID: {ytId}</Text>
+              <Pressable
+                style={styles.thumbnailCard}
+                onPress={() => Linking.openURL(formUrl)}
+              >
+                <Image
+                  source={{ uri: `https://img.youtube.com/vi/${ytId}/hqdefault.jpg` }}
+                  style={StyleSheet.absoluteFillObject}
+                  resizeMode="cover"
+                />
+                <View style={styles.thumbnailPlay}>
+                  <TvMinimalPlay size={28} color={colors.white} fill={colors.error} />
                 </View>
-                <Text style={styles.ytHelp}>
-                  Stored as the full URL. Students will see the embedded player.
-                </Text>
-              </View>
+                <View style={styles.thumbnailBadge}>
+                  <TvMinimalPlay size={10} color={colors.white} />
+                  <Text style={styles.thumbnailBadgeText}>Watch on YouTube</Text>
+                </View>
+              </Pressable>
             ) : (
-              <View style={styles.ytPreview}>
-                <Text style={styles.ytPreviewLabel}>Non-YouTube video URL set.</Text>
+              <View style={styles.ytNonYoutube}>
+                <TvMinimalPlay size={14} color={colors.error} />
+                <Text style={styles.ytNonYoutubeText} numberOfLines={1}>{formUrl}</Text>
               </View>
             )
           ) : null}
@@ -363,9 +407,9 @@ export function LessonEditorScreen({ route, navigation }: Props) {
           size="lg"
           disabled={saving}
           leftIcon={<Check size={16} color={colors.white} />}
-          onPress={isCreateMode ? handleCreateLesson : () => navigation.goBack()}
+          onPress={isCreateMode ? handleCreateLesson : handleDone}
         >
-          {isCreateMode ? (saving ? 'Saving…' : 'Save lesson') : 'Done'}
+          {isCreateMode ? (saving ? 'Saving…' : 'Save lesson') : saving ? 'Saving…' : 'Done'}
         </Button>
       </View>
     </ScreenContainer>
@@ -409,22 +453,28 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.lightGray,
     alignItems: 'center', justifyContent: 'center',
   },
-  ytPreview: { gap: 6 },
-  ytPreviewFrame: {
-    height: 140, borderRadius: 12,
+  thumbnailCard: {
+    height: 160, borderRadius: 14, overflow: 'hidden',
     backgroundColor: colors.brand,
     alignItems: 'center', justifyContent: 'center',
-    gap: 4,
   },
-  ytPreviewPlay: {
-    width: 56, height: 56, borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+  thumbnailPlay: {
+    width: 60, height: 60, borderRadius: 30,
+    backgroundColor: 'rgba(0,0,0,0.45)',
     alignItems: 'center', justifyContent: 'center',
-    marginBottom: 4,
   },
-  ytPreviewLabel: { color: colors.accent, fontSize: 11, fontWeight: '700', letterSpacing: 0.6 },
-  ytPreviewId: { color: 'rgba(255,255,255,0.6)', fontSize: 11, fontFamily: 'monospace' as any },
-  ytHelp: { fontSize: 11, color: colors.bodyGreen },
+  thumbnailBadge: {
+    position: 'absolute', bottom: 10, right: 10,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 99,
+  },
+  thumbnailBadgeText: { fontSize: 11, fontWeight: '700', color: colors.white },
+  ytNonYoutube: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    padding: 10, borderRadius: 10, backgroundColor: colors.lightGray,
+  },
+  ytNonYoutubeText: { flex: 1, fontSize: 12, color: colors.bodyGreen },
 
   attachment: {
     flexDirection: 'row', alignItems: 'center', gap: 10,

@@ -10,6 +10,7 @@ import { Progress } from '../../components/Progress';
 import { toast } from '../../store/uiStore';
 import { listMyEnrollments, ApiEnrollment } from '../../services/studentEnrollments';
 import { getCourseProgress, ApiCourseProgress } from '../../services/progress';
+import { listCourses } from '../../services/courses';
 import type { Colors } from '../../theme/colors';
 import { shadows } from '../../theme/colors';
 import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
@@ -25,6 +26,7 @@ export function MyLearningScreen({ onCourse }: Props) {
   const [tab,         setTab]         = useState('progress');
   const [enrollments, setEnrollments] = useState<ApiEnrollment[]>([]);
   const [progressMap, setProgressMap] = useState<Record<string, ApiCourseProgress>>({});
+  const [titleMap,    setTitleMap]    = useState<Record<string, string>>({});
   const [loading,     setLoading]     = useState(true);
 
   useEffect(() => {
@@ -32,12 +34,23 @@ export function MyLearningScreen({ onCourse }: Props) {
     const load = async () => {
       setLoading(true);
       try {
-        const result = await listMyEnrollments();
+        const [enrollRes, courseRes] = await Promise.all([
+          listMyEnrollments(),
+          listCourses({ limit: 100 }),   // fetch course titles for display
+        ]);
         if (cancelled) return;
-        setEnrollments(result.data.items);
+
+        setEnrollments(enrollRes.data.items);
+
+        // Build courseId → title lookup from the public course list
+        const titles: Record<string, string> = {};
+        for (const c of courseRes.data.items) {
+          titles[c.id] = c.title;
+        }
+        setTitleMap(titles);
 
         // Fetch progress for all approved enrollments
-        const approved = result.data.items.filter((e) => e.state === 'approved');
+        const approved = enrollRes.data.items.filter((e) => e.state === 'approved');
         const progressResults = await Promise.allSettled(
           approved.map((e) => getCourseProgress(e.courseId)),
         );
@@ -120,7 +133,9 @@ export function MyLearningScreen({ onCourse }: Props) {
                     <BookOpen size={20} color={colors.accent} />
                   </View>
                   <View style={{ flex: 1, gap: 4 }}>
-                    <Text style={styles.cardTitle} numberOfLines={2}>{e.courseTitle}</Text>
+                    <Text style={styles.cardTitle} numberOfLines={2}>
+                    {e.courseTitle ?? titleMap[e.courseId] ?? `Course ${e.courseId.slice(0, 8)}…`}
+                  </Text>
                     {e.state === 'pending' ? (
                       <Text style={styles.pendingBadge}>Awaiting approval</Text>
                     ) : pct > 0 ? (

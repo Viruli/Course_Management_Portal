@@ -1,15 +1,19 @@
 import { apiFetch, ApiResult } from './api';
 
+// The GET /me/enrollments response (§8.2) returns IDs and timestamps only.
+// courseTitle is not in the spec — kept optional in case the backend adds it.
 export interface ApiEnrollment {
-  id:          string;
-  courseId:    string;
-  courseTitle: string;
-  studentUid:  string;
-  state:       'pending' | 'approved' | 'rejected' | 'withdrawn';
-  approvedAt?: string;
-  rejectedAt?: string;
-  createdAt:   string;
-  updatedAt:   string;
+  id:           string;
+  courseId:     string;
+  studentUid:   string;
+  state:        'pending' | 'approved' | 'rejected' | 'withdrawn';
+  reason?:      string | null;
+  approvedAt?:  string | null;
+  rejectedAt?:  string | null;
+  withdrawnAt?: string | null;
+  createdAt:    string;
+  updatedAt:    string;
+  courseTitle?: string;   // optional — backend may include this
 }
 
 interface PaginatedEnrollments {

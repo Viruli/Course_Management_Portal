@@ -8,6 +8,7 @@ import {
 import { ScreenContainer } from '../../components/ScreenContainer';
 import { AppBar } from '../../components/AppBar';
 import { IconBtn } from '../../components/IconBtn';
+import { DebugPanel } from '../../components/DebugPanel';
 import type { Colors } from '../../theme/colors';
 import { useColors, useThemedStyles } from '../../theme/useThemedStyles';
 import type { ApiSubjectInTree, ApiAttachmentInTree } from '../../services/courses';
@@ -164,6 +165,7 @@ export function SubjectDetailScreen({ route, navigation }: Props) {
             </View>
           )}
         </View>
+        <DebugPanel tags={['lessons.list', 'courses.getById']} title="Subject debug" />
       </ScrollView>
     </ScreenContainer>
   );
